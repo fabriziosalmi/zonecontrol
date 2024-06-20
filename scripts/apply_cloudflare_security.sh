@@ -28,70 +28,6 @@ apply_setting() {
     fi
 }
 
-# Fetch banned IPs from CrowdSec
-echo "Fetching banned IP addresses from CrowdSec..."
-sudo cscli decisions list -o json | jq -r '.[].value' > banned_ips.txt
-echo "Banned IPs list created."
-
-# Check if the IP list already exists in Cloudflare
-IP_LIST_NAME="crowdsec-banned-ips"  # Use a valid name
-IP_LIST_DESCRIPTION="List of IPs banned by CrowdSec"
-
-echo "Checking if IP list $IP_LIST_NAME exists in Cloudflare..."
-IP_LIST_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists" \
-    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-    -H "Content-Type: application/json")
-
-echo "API response for IP list check: $IP_LIST_RESPONSE"
-
-IP_LIST_ID=$(echo "$IP_LIST_RESPONSE" | jq -r '.result[] | select(.name=="'"$IP_LIST_NAME"'") | .id')
-
-if [[ -z "$IP_LIST_ID" ]]; then
-    echo "Creating IP list $IP_LIST_NAME..."
-    IP_LIST_CREATE_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists" \
-      -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-      -H "Content-Type: application/json" \
-      --data '{
-        "name": "'"$IP_LIST_NAME"'",
-        "description": "'"$IP_LIST_DESCRIPTION"'",
-        "kind": "ip"
-      }')
-
-    echo "API response for IP list creation: $IP_LIST_CREATE_RESPONSE"
-
-    IP_LIST_ID=$(echo "$IP_LIST_CREATE_RESPONSE" | jq -r '.result.id')
-
-    if [[ -z "$IP_LIST_ID" || "$IP_LIST_ID" == "null" ]]; then
-        echo "Failed to create IP list. API response: $IP_LIST_CREATE_RESPONSE" >&2
-        exit 1
-    fi
-
-    echo "IP list created with ID: $IP_LIST_ID."
-else
-    echo "IP list $IP_LIST_NAME already exists with ID: $IP_LIST_ID."
-fi
-
-# Upload banned IPs to Cloudflare IP list
-echo "Uploading banned IPs to Cloudflare IP list..."
-BANNED_IPS=$(jq -R -s -c 'split("\n") | map(select(length > 0)) | map({ip: .})' banned_ips.txt)
-CHUNK_SIZE=1000
-TOTAL_IPS=$(echo $BANNED_IPS | jq length)
-
-for ((i=0; i < $TOTAL_IPS; i+=$CHUNK_SIZE)); do
-    CHUNK=$(echo $BANNED_IPS | jq -c ".[$i:$((i+$CHUNK_SIZE))]")
-    RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists/$IP_LIST_ID/items" \
-      -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-      -H "Content-Type: application/json" \
-      --data '{"items": '$CHUNK'}')
-    if [[ $(echo "$RESPONSE" | jq -r '.success') == "true" ]]; then
-        echo "Uploaded chunk $i to $((i+$CHUNK_SIZE)) IPs."
-    else
-        echo "Failed to upload IPs: $(echo "$RESPONSE" | jq -r '.errors[] | .message')" >&2
-        exit 1
-    fi
-done
-echo "All banned IPs have been uploaded."
-
 # Apply security settings
 API_URL="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/settings"
 
@@ -238,33 +174,3 @@ else
     echo "Failed to apply rate limiting rule: $(echo "$RESPONSE" | jq -r '.errors[] | .message')" >&2
     exit 1
 fi
-
-# Firewall rule to block IPs in CrowdSec list
-if [[ -n "$IP_LIST_ID" ]]; then
-    echo "Creating firewall rule to block IPs from the CrowdSec list..."
-    FIREWALL_RULE=$(cat <<EOF
-{
-  "action": "block",
-  "filter": {
-    "expression": "ip.src in \$${IP_LIST_ID}",
-    "description": "Block requests from IPs in the CrowdSec banned list"
-  },
-  "paused": false
-}
-EOF
-)
-    RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/rules" \
-      $HEADERS --data "$FIREWALL_RULE")
-    if [[ $(echo "$RESPONSE" | jq -r '.success') == "true" ]]; then
-        echo "Firewall rule applied to block IPs from CrowdSec list."
-    else
-        echo "Failed to apply firewall rule: $(echo "$RESPONSE" | jq -r '.errors[] | .message')" >&2
-        exit 1
-    fi
-else
-    echo "No valid IP list ID found. Skipping firewall rule creation."
-fi
-
-# Cleanup
-echo "Cleaning up..."
-rm -f banned_ips.txt

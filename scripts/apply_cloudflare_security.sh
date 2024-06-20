@@ -37,20 +37,35 @@ echo "Banned IPs list created."
 IP_LIST_NAME="CrowdSec_Banned_IPs"
 IP_LIST_DESCRIPTION="List of IPs banned by CrowdSec"
 
-IP_LIST_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists" \
+echo "Checking if IP list $IP_LIST_NAME exists in Cloudflare..."
+IP_LIST_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists" \
     -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-    -H "Content-Type: application/json" | jq -r '.result[] | select(.name=="'"$IP_LIST_NAME"'") | .id')
+    -H "Content-Type: application/json")
+
+echo "API response for IP list check: $IP_LIST_RESPONSE"
+
+IP_LIST_ID=$(echo "$IP_LIST_RESPONSE" | jq -r '.result[] | select(.name=="'"$IP_LIST_NAME"'") | .id')
 
 if [[ -z "$IP_LIST_ID" ]]; then
     echo "Creating IP list $IP_LIST_NAME..."
-    IP_LIST_ID=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists" \
+    IP_LIST_CREATE_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists" \
       -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
       -H "Content-Type: application/json" \
       --data '{
         "name": "'"$IP_LIST_NAME"'",
         "description": "'"$IP_LIST_DESCRIPTION"'",
         "kind": "ip"
-      }' | jq -r '.result.id')
+      }')
+
+    echo "API response for IP list creation: $IP_LIST_CREATE_RESPONSE"
+
+    IP_LIST_ID=$(echo "$IP_LIST_CREATE_RESPONSE" | jq -r '.result.id')
+
+    if [[ -z "$IP_LIST_ID" || "$IP_LIST_ID" == "null" ]]; then
+        echo "Failed to create IP list. API response: $IP_LIST_CREATE_RESPONSE" >&2
+        exit 1
+    fi
+
     echo "IP list created with ID: $IP_LIST_ID."
 else
     echo "IP list $IP_LIST_NAME already exists with ID: $IP_LIST_ID."

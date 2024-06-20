@@ -34,7 +34,7 @@ sudo cscli decisions list -o json | jq -r '.[].value' > banned_ips.txt
 echo "Banned IPs list created."
 
 # Check if the IP list already exists in Cloudflare
-IP_LIST_NAME="CrowdSec_Banned_IPs"
+IP_LIST_NAME="crowdsec-banned-ips"  # Use a valid name
 IP_LIST_DESCRIPTION="List of IPs banned by CrowdSec"
 
 echo "Checking if IP list $IP_LIST_NAME exists in Cloudflare..."

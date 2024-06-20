@@ -17,7 +17,7 @@ jobs:
         run: |
           echo "Installing dependencies..."
           sudo apt-get update
-          sudo apt-get install -y jq yq curl
+          sudo apt-get install -y jq curl
 
       - name: Install and Configure CrowdSec
         run: |

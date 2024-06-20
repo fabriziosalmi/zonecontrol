@@ -40,7 +40,7 @@ jobs:
           ENABLE_HTTPS_REWRITES: ${{ vars.ENABLE_HTTPS_REWRITES }}
           GEO_BLOCKING_ENABLED: ${{ vars.GEO_BLOCKING_ENABLED }}
           GEO_BLOCKING_COUNTRIES: ${{ vars.GEO_BLOCKING_COUNTRIES }}
-          FIREWALL_RULES: ${{ vars.FIREWALL_RULES }}
+          FIREWALL_RULES: ${{ vars.FIREWALL_RULES }}  # Ensure this is set to a valid JSON array or leave it empty.
           CUSTOM_HEADER_ENABLED: ${{ vars.CUSTOM_HEADER_ENABLED }}
           CUSTOM_HEADER_KEY: ${{ vars.CUSTOM_HEADER_KEY }}
           CUSTOM_HEADER_VALUE: ${{ vars.CUSTOM_HEADER_VALUE }}

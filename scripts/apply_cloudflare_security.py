@@ -21,10 +21,20 @@ def main():
     enable_https_rewrites = os.getenv('ENABLE_HTTPS_REWRITES', 'false').lower() == 'true'
     geo_blocking_enabled = os.getenv('GEO_BLOCKING_ENABLED', 'false').lower() == 'true'
     geo_blocking_countries = os.getenv('GEO_BLOCKING_COUNTRIES', '').split(',')
-    firewall_rules = json.loads(os.getenv('FIREWALL_RULES', '[]'))
     custom_header_enabled = os.getenv('CUSTOM_HEADER_ENABLED', 'false').lower() == 'true'
     custom_header_key = os.getenv('CUSTOM_HEADER_KEY')
     custom_header_value = os.getenv('CUSTOM_HEADER_VALUE')
+
+    # Validate and load FIREWALL_RULES
+    firewall_rules = []
+    firewall_rules_env = os.getenv('FIREWALL_RULES', '[]')
+    try:
+        firewall_rules = json.loads(firewall_rules_env)
+        if not isinstance(firewall_rules, list):
+            raise ValueError("FIREWALL_RULES should be a list.")
+    except json.JSONDecodeError as e:
+        print(f"Error decoding FIREWALL_RULES: {e}. Defaulting to an empty list.")
+        firewall_rules = []
 
     # Initialize Cloudflare client
     cf = CloudFlare(token=cf_token)
@@ -125,7 +135,6 @@ def main():
         print(f"Custom header set: {custom_header_key}: {custom_header_value}")
 
     # Apply Rate Limiting Rule
-    rate_limit_url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/rate_limits"
     rate_limit_rule = {
         "threshold": 1000,
         "period": 60,

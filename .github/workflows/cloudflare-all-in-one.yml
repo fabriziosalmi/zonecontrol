@@ -17,8 +17,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip
-          pip3 install cloudflare
-
+          pip3 install cloudflare==2.19.*
+          
       - name: Run Cloudflare Security Settings Script
         run: |
           python3 scripts/apply_cloudflare_security.py

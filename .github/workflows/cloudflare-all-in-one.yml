@@ -33,14 +33,14 @@ jobs:
           ENABLE_HSTS: ${{ vars.ENABLE_HSTS }}
           HSTS_MAX_AGE: ${{ vars.HSTS_MAX_AGE }}
           TLS_MIN_VERSION: ${{ vars.TLS_MIN_VERSION }}
-          SECURE_CIPHERS: ${{ vars.SECURE_CIPHERS }}
+          SECURE_CIPHERS: ${{ vars.SECURE_CIPHERS }}  # Make optional
           ENABLE_DDOS_PROTECTION: ${{ vars.ENABLE_DDOS_PROTECTION }}
           ENABLE_WAF: ${{ vars.ENABLE_WAF }}
           ENABLE_DNSSEC: ${{ vars.ENABLE_DNSSEC }}
           ENABLE_HTTPS_REWRITES: ${{ vars.ENABLE_HTTPS_REWRITES }}
           GEO_BLOCKING_ENABLED: ${{ vars.GEO_BLOCKING_ENABLED }}
           GEO_BLOCKING_COUNTRIES: ${{ vars.GEO_BLOCKING_COUNTRIES }}
-          FIREWALL_RULES: ${{ vars.FIREWALL_RULES }}
+          FIREWALL_RULES: ${{ vars.FIREWALL_RULES }}  # Make optional
           CUSTOM_HEADER_ENABLED: ${{ vars.CUSTOM_HEADER_ENABLED }}
           CUSTOM_HEADER_KEY: ${{ vars.CUSTOM_HEADER_KEY }}
           CUSTOM_HEADER_VALUE: ${{ vars.CUSTOM_HEADER_VALUE }}

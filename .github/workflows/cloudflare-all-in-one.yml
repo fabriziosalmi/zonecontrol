@@ -14,9 +14,10 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up dependencies
-        uses: dawidd6/action-install-debian-packages@v2
-        with:
-          packages: jq yq curl
+        run: |
+          echo "Installing dependencies..."
+          sudo apt-get update
+          sudo apt-get install -y jq yq curl
 
       - name: Install and Configure CrowdSec
         run: |
@@ -49,7 +50,6 @@ jobs:
           DNS_RECORD_VALUE="${{ vars.DNS_RECORD_VALUE }}"
 
           # Check if the DNS record for the subdomain exists
-          RECORD_NAME=$(echo $DOMAIN | awk -F '.' '{print $(NF-1)"."$NF}')
           RECORD_CHECK_RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?name=$DOMAIN" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json")
@@ -143,33 +143,6 @@ jobs:
             apply_setting "$API_URL" '{"automatic_https_rewrites":{"value":true}}' "Automatic HTTPS Rewrites enabled."
           fi
 
-          # Apply Zero Trust Application settings
-          if [[ "${{ vars.ZERO_TRUST_APP_ENABLED }}" == "true" ]]; then
-            echo "Creating Zero Trust Application..."
-            APPLICATION_ID=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/access/apps" \
-              $HEADERS --data '{
-                "name": "'"${{ vars.ZERO_TRUST_APP_NAME }}"'",
-                "domain": "'"${{ vars.ZERO_TRUST_APP_DOMAIN }}"'"
-              }' | jq -r '.result.id')
-            
-            echo "Application created with ID: $APPLICATION_ID"
-
-            echo "Configuring Zero Trust Application access policy..."
-            curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/access/apps/$APPLICATION_ID/policies" \
-              $HEADERS --data '{
-                "name": "Access Policy",
-                "decision": "allow",
-                "include": [
-                  {
-                    "'"${{ vars.ZERO_TRUST_APP_POLICY_TYPE }}"'": {
-                      "value": "'"${{ vars.ZERO_TRUST_APP_POLICY_VALUE }}"'"
-                    }
-                  }
-                ]
-              }'
-            echo "Zero Trust Application access policy configured."
-          fi
-
           # Apply Geo-Blocking settings
           if [[ "${{ vars.GEO_BLOCKING_ENABLED }}" == "true" ]]; then
             echo "Configuring Geo-Blocking..."
@@ -234,6 +207,49 @@ jobs:
                 "status": "active"
               }'
             echo "Custom header set: ${{ vars.CUSTOM_HEADER_KEY }}: ${{ vars.CUSTOM_HEADER_VALUE }}"
+
+          # Apply Rate Limiting Rule
+          echo "Setting up rate limiting rule..."
+          RATE_LIMIT_URL="https://api.cloudflare.com/client/v4/zones/${{ vars.CLOUDFLARE_ZONE_ID }}/rate_limits"
+          RATE_LIMIT_RULE=$(cat <<EOF
+{
+  "threshold": 1000,
+  "period": 60,
+  "action": {
+    "mode": "simulate",
+    "timeout": 60,
+    "response": {
+      "content_type": "text/plain",
+      "body": "This request has been rate-limited."
+    }
+  },
+  "match": {
+    "request": {
+      "methods": ["GET"]
+    },
+    "response": {
+      "origin_traffic": true,
+      "headers": [
+        {
+          "name": "cf-ray",
+          "op": "exists"
+        }
+      ]
+    },
+    "url": "*"
+  },
+  "enabled": true,
+  "description": "Rate limit rule to limit to 1000 requests per minute for GET requests"
+}
+EOF
+)
+          RESPONSE=$(curl -s -X POST "$RATE_LIMIT_URL" $HEADERS --data "$RATE_LIMIT_RULE")
+          if [[ $(echo "$RESPONSE" | jq -r '.success') == "true" ]]; then
+            echo "Rate limiting rule applied successfully."
+          else
+            echo "Failed to apply rate limiting rule: $(echo "$RESPONSE" | jq -r '.errors[] | .message')" >&2
+            exit 1
+          fi
           fi
 
           # Apply CrowdSec Banned IPs

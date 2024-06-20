@@ -1,0 +1,272 @@
+name: Apply Cloudflare Security Settings
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *' # Runs every day at midnight UTC
+
+jobs:
+  apply-security-settings:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up dependencies
+        uses: dawidd6/action-install-debian-packages@v2
+        with:
+          packages: jq yq curl
+
+      - name: Install and Configure CrowdSec
+        run: |
+          echo "Installing CrowdSec..."
+          curl -sL https://packagecloud.io/crowdsec/crowdsec/gpgkey | sudo apt-key add -
+          echo "deb https://packagecloud.io/crowdsec/crowdsec/ubuntu/ focal main" | sudo tee /etc/apt/sources.list.d/crowdsec.list
+          sudo apt-get update
+          sudo apt-get install -y crowdsec
+
+          echo "Configuring CrowdSec..."
+          sudo cscli collections install crowdsecurity/linux
+          sudo systemctl enable crowdsec
+          sudo systemctl start crowdsec
+
+      - name: Fetch CrowdSec Banned IPs
+        id: fetch-crowdsec-ips
+        run: |
+          echo "Fetching banned IP addresses from CrowdSec..."
+          sudo cscli decisions list -o json | jq -r '.[].value' > banned_ips.txt
+          echo "Banned IPs list created."
+
+      - name: Read configuration
+        id: config
+        run: |
+          echo "Loading configuration from config.yaml..."
+          CONFIG_FILE="config.yaml"
+
+          DOMAIN=$(yq eval '.domain' $CONFIG_FILE)
+          CLOUDFLARE_ZONE_ID=$(yq eval '.cloudflare_zone_id' $CONFIG_FILE)
+          
+          ENABLE_HTTP3=$(yq eval '.enable_http3 // false' $CONFIG_FILE)
+          ENABLE_HSTS=$(yq eval '.enable_hsts // false' $CONFIG_FILE)
+          HSTS_MAX_AGE=$(yq eval '.hsts_max_age // 31536000' $CONFIG_FILE)
+          TLS_MIN_VERSION=$(yq eval '.tls_min_version // "1.2"' $CONFIG_FILE)
+          SECURE_CIPHERS=$(yq eval '.secure_ciphers // "ECDHE-RSA-AES128-GCM-SHA256"' $CONFIG_FILE)
+          ENABLE_DDOS_PROTECTION=$(yq eval '.enable_ddos_protection // false' $CONFIG_FILE)
+          ENABLE_WAF=$(yq eval '.enable_waf // false' $CONFIG_FILE)
+          ENABLE_DNSSEC=$(yq eval '.enable_dnssec // false' $CONFIG_FILE)
+          ENABLE_HTTPS_REWRITES=$(yq eval '.enable_https_rewrites // false' $CONFIG_FILE)
+          ZERO_TRUST_APP_ENABLED=$(yq eval '.zero_trust_application.enabled // false' $CONFIG_FILE)
+          ZERO_TRUST_APP_NAME=$(yq eval '.zero_trust_application.name' $CONFIG_FILE)
+          ZERO_TRUST_APP_DOMAIN=$(yq eval '.zero_trust_application.domain' $CONFIG_FILE)
+          ZERO_TRUST_APP_POLICY_TYPE=$(yq eval '.zero_trust_application.access_policy.type // "ip"' $CONFIG_FILE)
+          ZERO_TRUST_APP_POLICY_VALUE=$(yq eval '.zero_trust_application.access_policy.value' $CONFIG_FILE)
+          GEO_BLOCKING_ENABLED=$(yq eval '.geo_blocking.enabled // false' $CONFIG_FILE)
+          GEO_BLOCKING_COUNTRIES=$(yq eval '.geo_blocking.countries // []' $CONFIG_FILE | jq -c '.')
+          FIREWALL_RULES=$(yq eval '.firewall_rules // []' $CONFIG_FILE | jq -c '.')
+          CUSTOM_HEADER_ENABLED=$(yq eval '.custom_header.enabled // false' $CONFIG_FILE)
+          CUSTOM_HEADER_KEY=$(yq eval '.custom_header.key' $CONFIG_FILE)
+          CUSTOM_HEADER_VALUE=$(yq eval '.custom_header.value' $CONFIG_FILE)
+
+          # Exporting as GitHub environment variables
+          echo "domain=$DOMAIN" >> $GITHUB_ENV
+          echo "cloudflare_zone_id=$CLOUDFLARE_ZONE_ID" >> $GITHUB_ENV
+          echo "enable_http3=$ENABLE_HTTP3" >> $GITHUB_ENV
+          echo "enable_hsts=$ENABLE_HSTS" >> $GITHUB_ENV
+          echo "hsts_max_age=$HSTS_MAX_AGE" >> $GITHUB_ENV
+          echo "tls_min_version=$TLS_MIN_VERSION" >> $GITHUB_ENV
+          echo "secure_ciphers=$SECURE_CIPHERS" >> $GITHUB_ENV
+          echo "enable_ddos_protection=$ENABLE_DDOS_PROTECTION" >> $GITHUB_ENV
+          echo "enable_waf=$ENABLE_WAF" >> $GITHUB_ENV
+          echo "enable_dnssec=$ENABLE_DNSSEC" >> $GITHUB_ENV
+          echo "enable_https_rewrites=$ENABLE_HTTPS_REWRITES" >> $GITHUB_ENV
+          echo "zero_trust_application_enabled=$ZERO_TRUST_APP_ENABLED" >> $GITHUB_ENV
+          echo "zero_trust_app_name=$ZERO_TRUST_APP_NAME" >> $GITHUB_ENV
+          echo "zero_trust_app_domain=$ZERO_TRUST_APP_DOMAIN" >> $GITHUB_ENV
+          echo "zero_trust_app_policy_type=$ZERO_TRUST_APP_POLICY_TYPE" >> $GITHUB_ENV
+          echo "zero_trust_app_policy_value=$ZERO_TRUST_APP_POLICY_VALUE" >> $GITHUB_ENV
+          echo "geo_blocking_enabled=$GEO_BLOCKING_ENABLED" >> $GITHUB_ENV
+          echo "geo_blocking_countries=$GEO_BLOCKING_COUNTRIES" >> $GITHUB_ENV
+          echo "firewall_rules=$FIREWALL_RULES" >> $GITHUB_ENV
+          echo "custom_header_enabled=$CUSTOM_HEADER_ENABLED" >> $GITHUB_ENV
+          echo "custom_header_key=$CUSTOM_HEADER_KEY" >> $GITHUB_ENV
+          echo "custom_header_value=$CUSTOM_HEADER_VALUE" >> $GITHUB_ENV
+
+      - name: Apply security settings
+        run: |
+          set -e  # Exit on any error
+
+          API_URL="https://api.cloudflare.com/client/v4/zones/${{ env.cloudflare_zone_id }}/settings"
+          HEADERS="-H \"Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}\" -H \"Content-Type: application/json\""
+
+          apply_setting() {
+            local ENDPOINT=$1
+            local DATA=$2
+            local SUCCESS_MESSAGE=$3
+
+            RESPONSE=$(curl -s -X PATCH "$ENDPOINT" $HEADERS --data "$DATA")
+            if [[ $(echo "$RESPONSE" | jq -r '.success') == "true" ]]; then
+              echo "$SUCCESS_MESSAGE"
+            else
+              echo "Error applying $SUCCESS_MESSAGE: $RESPONSE" >&2
+              exit 1
+            fi
+          }
+
+          # Apply HTTP/3 setting
+          if [[ "${{ env.enable_http3 }}" == "true" ]]; then
+            apply_setting "$API_URL" '{"http3":{"value":true}}' "HTTP/3 enabled."
+          fi
+
+          # Apply HSTS setting
+          if [[ "${{ env.enable_hsts }}" == "true" ]]; then
+            apply_setting "$API_URL/security_header" \
+              '{"strict_transport_security": {"enabled": true, "max_age": '${{ env.hsts_max_age }}', "include_subdomains": true, "preload": true}}' \
+              "HSTS enabled."
+          fi
+
+          # Apply TLS minimum version setting
+          apply_setting "$API_URL" '{"min_tls_version":{"value":"${{ env.tls_min_version }}"},"tls_1_2_only":{"value":true}}' \
+            "TLS minimum version set to ${{ env.tls_min_version }}."
+
+          # Apply secure ciphers setting
+          apply_setting "$API_URL" '{"cipher_suite":{"value":"${{ env.secure_ciphers }}"},"cipher_suites_legacy":{"value":false}}' \
+            "Secure ciphers applied."
+
+          # Apply DDoS protection setting
+          if [[ "${{ env.enable_ddos_protection }}" == "true" ]]; then
+            apply_setting "$API_URL" '{"ddos_protection":{"value":"true"}}' "DDoS protection enabled."
+          fi
+
+          # Apply WAF setting
+          if [[ "${{ env.enable_waf }}" == "true" ]]; then
+            apply_setting "$API_URL" '{"web_application_firewall":{"value":"true"}}' "Web Application Firewall enabled."
+          fi
+
+          # Apply DNSSEC setting
+          if [[ "${{ env.enable_dnssec }}" == "true" ]]; then
+            apply_setting "https://api.cloudflare.com/client/v4/zones/${{ env.cloudflare_zone_id }}/dnssec" \
+              '{"status":"active"}' "DNSSEC enabled."
+          fi
+
+          # Apply HTTPS rewrites setting
+          if [[ "${{ env.enable_https_rewrites }}" == "true" ]]; then
+            apply_setting "$API_URL" '{"automatic_https_rewrites":{"value":true}}' "Automatic HTTPS Rewrites enabled."
+          fi
+
+          # Apply Zero Trust Application settings
+          if [[ "${{ env.zero_trust_application_enabled }}" == "true" ]]; then
+            echo "Creating Zero Trust Application..."
+            APPLICATION_ID=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/access/apps" \
+              $HEADERS --data '{
+                "name": "'"${{ env.zero_trust_app_name }}"'",
+                "domain": "'"${{ env.zero_trust_app_domain }}"'"
+              }' | jq -r '.result.id')
+            
+            echo "Application created with ID: $APPLICATION_ID"
+
+            echo "Configuring Zero Trust Application access policy..."
+            curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/access/apps/$APPLICATION_ID/policies" \
+              $HEADERS --data '{
+                "name": "Access Policy",
+                "decision": "allow",
+                "include": [
+                  {
+                    "'"${{ env.zero_trust_app_policy_type }}"'": {
+                      "value": "'"${{ env.zero_trust_app_policy_value }}"'"
+                    }
+                  }
+                ]
+              }'
+            echo "Zero Trust Application access policy configured."
+          fi
+
+          # Apply Geo-Blocking settings
+          if [[ "${{ env.geo_blocking_enabled }}" == "true" ]]; then
+            echo "Configuring Geo-Blocking..."
+            for COUNTRY in $(echo ${{ env.geo_blocking_countries }} | jq -r '.[]'); do
+              curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ env.cloudflare_zone_id }}/firewall/rules" \
+                $HEADERS --data '{
+                  "action": "block",
+                  "filter": {
+                    "expression": "ip.geoip.country eq \"'$COUNTRY'\"",
+                    "description": "Block traffic from '$COUNTRY'"
+                  }
+                }'
+              echo "Blocking traffic from $COUNTRY."
+            done
+          fi
+
+          # Apply Firewall rules
+          echo "Applying Firewall Rules..."
+          for RULE in $(echo ${{ env.firewall_rules }} | jq -c '.[]'); do
+            ACTION=$(echo $RULE | jq -r '.action')
+            EXPRESSION=$(echo $RULE | jq -r '.expression')
+            curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ env.cloudflare_zone_id }}/firewall/rules" \
+              $HEADERS --data '{
+                "action": "'"$ACTION"'",
+                "filter": {
+                  "expression": "'"$EXPRESSION"'",
+                  "description": "'"$ACTION"' traffic matching rule"
+                }
+              }'
+            echo "$ACTION traffic matching rule applied: $EXPRESSION"
+          done
+
+          # Apply Custom Header settings
+          if [[ "${{ env.custom_header_enabled }}" == "true" ]]; then
+            echo "Setting custom header..."
+            curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ env.cloudflare_zone_id }}/pagerules" \
+              $HEADERS --data '{
+                "targets": [
+                  {
+                    "target": "url",
+                    "constraint": {
+                      "operator": "matches",
+                      "value": "*.'${{ env.domain }}'/*"
+                    }
+                  }
+                ],
+                "actions": [
+                  {
+                    "id": "set_header",
+                    "value": {
+                      "headers": [
+                        {
+                          "name": "'"${{ env.custom_header_key }}"'",
+                          "value": "'"${{ env.custom_header_value }}"'"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "priority": 1,
+                "status": "active"
+              }'
+            echo "Custom header set: ${{ env.custom_header_key }}: ${{ env.custom_header_value }}"
+          fi
+
+          # Apply CrowdSec Banned IPs
+          if [[ -f "banned_ips.txt" ]]; then
+            echo "Applying CrowdSec Banned IPs..."
+            while IFS= read -r IP; do
+              curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ env.cloudflare_zone_id }}/firewall/access_rules/rules" \
+                $HEADERS --data '{
+                  "mode": "block",
+                  "configuration": {
+                    "target": "ip",
+                    "value": "'"$IP"'"
+                  },
+                  "notes": "Blocked by CrowdSec"
+                }'
+              echo "Blocked IP $IP from CrowdSec list."
+            done < banned_ips.txt
+          else
+            echo "No banned IPs file found."
+          fi
+
+      - name: Post-Action Cleanup
+        if: always()
+        run: |
+          echo "Cleaning up..."
+          rm -f banned_ips.txt

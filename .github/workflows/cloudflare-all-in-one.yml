@@ -19,19 +19,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq curl
 
-      - name: Install and Configure CrowdSec
-        run: |
-          echo "Installing CrowdSec..."
-          curl -sL https://packagecloud.io/crowdsec/crowdsec/gpgkey | sudo apt-key add -
-          echo "deb https://packagecloud.io/crowdsec/crowdsec/ubuntu/ focal main" | sudo tee /etc/apt/sources.list.d/crowdsec.list
-          sudo apt-get update
-          sudo apt-get install -y crowdsec
-
-          echo "Configuring CrowdSec..."
-          sudo cscli collections install crowdsecurity/linux
-          sudo systemctl enable crowdsec
-          sudo systemctl start crowdsec
-
       - name: Run Cloudflare Security Settings Script
         run: |
           chmod +x scripts/apply_cloudflare_security.sh

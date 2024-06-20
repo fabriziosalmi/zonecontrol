@@ -43,18 +43,18 @@ jobs:
         id: update-ip-list
         run: |
           CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
-          CLOUDFLARE_ZONE_ID="${{ vars.CLOUDFLARE_ZONE_ID }}"
+          CLOUDFLARE_ACCOUNT_ID="${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
           IP_LIST_NAME="CrowdSec_Banned_IPs"
           IP_LIST_DESCRIPTION="List of IPs banned by CrowdSec"
 
           # Check if the IP list already exists
-          IP_LIST_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/rules/lists" \
+          IP_LIST_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" | jq -r '.result[] | select(.name=="'"$IP_LIST_NAME"'") | .id')
 
           if [[ -z "$IP_LIST_ID" ]]; then
             echo "Creating IP list $IP_LIST_NAME..."
-            IP_LIST_ID=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/rules/lists" \
+            IP_LIST_ID=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists" \
               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
               -H "Content-Type: application/json" \
               --data '{
@@ -67,15 +67,18 @@ jobs:
             echo "IP list $IP_LIST_NAME already exists with ID: $IP_LIST_ID."
           fi
 
+          # Export the IP_LIST_ID for later steps
+          echo "::set-output name=ip_list_id::$IP_LIST_ID"
+
           # Split banned IPs into manageable chunks and add to the IP list
           echo "Uploading banned IPs to Cloudflare IP list..."
-          BANNED_IPS=$(cat banned_ips.txt | jq -R -s -c 'split("\n") | map(select(length > 0)) | map({ip: .})')
+          BANNED_IPS=$(jq -R -s -c 'split("\n") | map(select(length > 0)) | map({ip: .})' banned_ips.txt)
           CHUNK_SIZE=1000
           TOTAL_IPS=$(echo $BANNED_IPS | jq length)
 
           for ((i=0; i < $TOTAL_IPS; i+=$CHUNK_SIZE)); do
             CHUNK=$(echo $BANNED_IPS | jq -c ".[$i:$((i+$CHUNK_SIZE))]")
-            RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/rules/lists/$IP_LIST_ID/items" \
+            RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/rules/lists/$IP_LIST_ID/items" \
               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
               -H "Content-Type: application/json" \
               --data '{"items": '$CHUNK'}')
@@ -261,9 +264,10 @@ EOF
 {
   "action": "block",
   "filter": {
-    "expression": "ip.src in {${IP_LIST_ID}}",
+    "expression": "ip.src in \$${IP_LIST_ID}",
     "description": "Block requests from IPs in the CrowdSec banned list"
-  }
+  },
+  "paused": false
 }
 EOF
 )

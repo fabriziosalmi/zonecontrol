@@ -47,53 +47,54 @@ def main():
 
     # Apply HTTP/3 setting
     if enable_http3:
-        cf.zones.settings.http3.patch(zone_id, data={"value": True})
+        cf.zones.settings.patch(zone_id, data={"http3": {"value": True}})
         print("HTTP/3 enabled.")
 
     # Apply HSTS setting
     if enable_hsts:
-        cf.zones.settings.update(zone_id, data={
-            "strict_transport_security": {
-                "enabled": True,
-                "max_age": hsts_max_age,
-                "include_subdomains": True,
-                "preload": True
+        cf.zones.settings.patch(zone_id, data={
+            "security_header": {
+                "strict_transport_security": {
+                    "enabled": True,
+                    "max_age": hsts_max_age,
+                    "include_subdomains": True,
+                    "preload": True
+                }
             }
         })
         print("HSTS enabled.")
 
     # Apply TLS minimum version setting
-    cf.zones.settings.update(zone_id, data={
+    cf.zones.settings.patch(zone_id, data={
         "min_tls_version": {"value": tls_min_version},
         "tls_1_2_only": {"value": True}
     })
     print(f"TLS minimum version set to {tls_min_version}.")
 
     # Apply secure ciphers setting
-    cf.zones.settings.update(zone_id, data={
-        "cipher_suite": {"value": secure_ciphers},
-        "cipher_suites_legacy": {"value": False}
+    cf.zones.settings.patch(zone_id, data={
+        "ciphers": {"value": secure_ciphers.split(",")}
     })
     print("Secure ciphers applied.")
 
     # Apply DDoS protection setting
     if enable_ddos_protection:
-        cf.zones.settings.update(zone_id, data={"ddos_protection": {"value": "true"}})
+        cf.zones.settings.patch(zone_id, data={"ddos_protection": {"value": "on"}})
         print("DDoS protection enabled.")
 
     # Apply WAF setting
     if enable_waf:
-        cf.zones.settings.update(zone_id, data={"web_application_firewall": {"value": "true"}})
+        cf.zones.settings.patch(zone_id, data={"waf": {"value": "on"}})
         print("Web Application Firewall enabled.")
 
     # Apply DNSSEC setting
     if enable_dnssec:
-        cf.zones.dnssec.patch(zone_id, data={"status": "active"})
+        cf.zones.dnssec.post(zone_id, data={"status": "active"})
         print("DNSSEC enabled.")
 
     # Apply HTTPS rewrites setting
     if enable_https_rewrites:
-        cf.zones.settings.update(zone_id, data={"automatic_https_rewrites": {"value": True}})
+        cf.zones.settings.patch(zone_id, data={"automatic_https_rewrites": {"value": True}})
         print("Automatic HTTPS Rewrites enabled.")
 
     # Apply Geo-Blocking settings

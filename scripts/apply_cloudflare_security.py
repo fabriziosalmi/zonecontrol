@@ -26,8 +26,9 @@ def main():
     custom_header_value = os.getenv('CUSTOM_HEADER_VALUE')
 
     # Validate and load FIREWALL_RULES
-    firewall_rules = []
     firewall_rules_env = os.getenv('FIREWALL_RULES', '[]')
+    print(f"FIREWALL_RULES environment variable content: {firewall_rules_env}")
+    
     try:
         firewall_rules = json.loads(firewall_rules_env)
         if not isinstance(firewall_rules, list):
@@ -35,6 +36,11 @@ def main():
     except json.JSONDecodeError as e:
         print(f"Error decoding FIREWALL_RULES: {e}. Defaulting to an empty list.")
         firewall_rules = []
+    except ValueError as e:
+        print(f"Value error: {e}. Defaulting to an empty list.")
+        firewall_rules = []
+    
+    print(f"Parsed FIREWALL_RULES: {firewall_rules}")
 
     # Initialize Cloudflare client
     cf = CloudFlare(token=cf_token)
@@ -155,10 +161,10 @@ def main():
         "description": "Rate limit rule to limit to 1000 requests per minute for GET requests"
     }
     response = cf.zones.rate_limits.post(zone_id, data=rate_limit_rule)
-    if response['success']:
+    if 'success' in response and response['success']:
         print("Rate limiting rule applied successfully.")
     else:
-        print(f"Failed to apply rate limiting rule: {response['errors']}")
+        print(f"Failed to apply rate limiting rule: {response}")
         sys.exit(1)
 
 if __name__ == "__main__":

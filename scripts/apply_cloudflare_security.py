@@ -1,7 +1,7 @@
 import os
 import sys
 import json
-from CloudFlare import CloudFlare
+from CloudFlare import CloudFlare, CloudFlareAPIError
 
 def main():
     # Environment variables
@@ -47,122 +47,157 @@ def main():
 
     # Apply HTTP/3 setting
     if enable_http3:
-        cf.zones.settings.http3.patch(zone_id, data={"value": "on"})
-        print("HTTP/3 enabled.")
+        try:
+            cf.zones.settings.http3.patch(zone_id, data={"value": "on"})
+            print("HTTP/3 enabled.")
+        except CloudFlareAPIError as e:
+            print(f"Error enabling HTTP/3: {e}")
 
     # Apply HSTS setting
     if enable_hsts:
-        cf.zones.settings.patch(zone_id, data={
-            "items": [{
-                "id": "security_header",
-                "value": {
-                    "strict_transport_security": {
-                        "enabled": True,
-                        "max_age": hsts_max_age,
-                        "include_subdomains": True,
-                        "preload": True
+        try:
+            cf.zones.settings.patch(zone_id, data={
+                "items": [{
+                    "id": "security_header",
+                    "value": {
+                        "strict_transport_security": {
+                            "enabled": True,
+                            "max_age": hsts_max_age,
+                            "include_subdomains": True,
+                            "preload": True
+                        }
                     }
-                }
-            }]
-        })
-        print("HSTS enabled.")
+                }]
+            })
+            print("HSTS enabled.")
+        except CloudFlareAPIError as e:
+            print(f"Error enabling HSTS: {e}")
 
     # Apply TLS minimum version setting
-    cf.zones.settings.patch(zone_id, data={
-        "items": [{
-            "id": "min_tls_version",
-            "value": tls_min_version
-        }]
-    })
-    print(f"TLS minimum version set to {tls_min_version}.")
+    try:
+        cf.zones.settings.patch(zone_id, data={
+            "items": [{
+                "id": "min_tls_version",
+                "value": tls_min_version
+            }]
+        })
+        print(f"TLS minimum version set to {tls_min_version}.")
+    except CloudFlareAPIError as e:
+        print(f"Error setting TLS minimum version: {e}")
 
-    # Apply secure ciphers setting
-    cf.zones.settings.patch(zone_id, data={
-        "items": [{
-            "id": "ciphers",
-            "value": secure_ciphers.split(",")
-        }]
-    })
-    print("Secure ciphers applied.")
+    # Apply secure ciphers setting, if provided
+    if secure_ciphers:
+        try:
+            cf.zones.settings.patch(zone_id, data={
+                "items": [{
+                    "id": "ciphers",
+                    "value": secure_ciphers.split(",")
+                }]
+            })
+            print("Secure ciphers applied.")
+        except CloudFlareAPIError as e:
+            print(f"Error setting secure ciphers: {e}. This might require the Advanced Certificate Manager.")
 
     # Apply DDoS protection setting
     if enable_ddos_protection:
-        cf.zones.settings.patch(zone_id, data={
-            "items": [{
-                "id": "ddos_protection",
-                "value": "on"
-            }]
-        })
-        print("DDoS protection enabled.")
+        try:
+            cf.zones.settings.patch(zone_id, data={
+                "items": [{
+                    "id": "ddos_protection",
+                    "value": "on"
+                }]
+            })
+            print("DDoS protection enabled.")
+        except CloudFlareAPIError as e:
+            print(f"Error enabling DDoS protection: {e}")
 
     # Apply WAF setting
     if enable_waf:
-        cf.zones.settings.patch(zone_id, data={
-            "items": [{
-                "id": "waf",
-                "value": "on"
-            }]
-        })
-        print("Web Application Firewall enabled.")
+        try:
+            cf.zones.settings.patch(zone_id, data={
+                "items": [{
+                    "id": "waf",
+                    "value": "on"
+                }]
+            })
+            print("Web Application Firewall enabled.")
+        except CloudFlareAPIError as e:
+            print(f"Error enabling WAF: {e}")
 
     # Apply DNSSEC setting
     if enable_dnssec:
-        cf.zones.dnssec.patch(zone_id, data={"status": "active"})
-        print("DNSSEC enabled.")
+        try:
+            cf.zones.dnssec.patch(zone_id, data={"status": "active"})
+            print("DNSSEC enabled.")
+        except CloudFlareAPIError as e:
+            print(f"Error enabling DNSSEC: {e}")
 
     # Apply HTTPS rewrites setting
     if enable_https_rewrites:
-        cf.zones.settings.patch(zone_id, data={
-            "items": [{
-                "id": "automatic_https_rewrites",
-                "value": "on"
-            }]
-        })
-        print("Automatic HTTPS Rewrites enabled.")
+        try:
+            cf.zones.settings.patch(zone_id, data={
+                "items": [{
+                    "id": "automatic_https_rewrites",
+                    "value": "on"
+                }]
+            })
+            print("Automatic HTTPS Rewrites enabled.")
+        except CloudFlareAPIError as e:
+            print(f"Error enabling HTTPS rewrites: {e}")
 
     # Apply Geo-Blocking settings
     if geo_blocking_enabled:
         for country in geo_blocking_countries:
             if country:
-                cf.zones.firewall.rules.post(zone_id, data={
-                    "action": "block",
-                    "filter": {"expression": f"ip.geoip.country eq \"{country}\""},
-                    "description": f"Block traffic from {country}"
-                })
-                print(f"Blocking traffic from {country}.")
+                try:
+                    cf.zones.firewall.rules.post(zone_id, data={
+                        "action": "block",
+                        "filter": {"expression": f"ip.geoip.country eq \"{country}\""},
+                        "description": f"Block traffic from {country}"
+                    })
+                    print(f"Blocking traffic from {country}.")
+                except CloudFlareAPIError as e:
+                    print(f"Error blocking traffic from {country}: {e}")
 
-    # Apply Firewall rules
-    for rule in firewall_rules:
-        cf.zones.firewall.rules.post(zone_id, data={
-            "action": rule['action'],
-            "filter": {"expression": rule['expression']},
-            "description": f"{rule['action']} traffic matching rule"
-        })
-        print(f"{rule['action']} traffic matching rule applied: {rule['expression']}")
+    # Apply Firewall rules if provided
+    if firewall_rules:
+        for rule in firewall_rules:
+            try:
+                cf.zones.firewall.rules.post(zone_id, data={
+                    "action": rule['action'],
+                    "filter": {"expression": rule['expression']},
+                    "description": f"{rule['action']} traffic matching rule"
+                })
+                print(f"{rule['action']} traffic matching rule applied: {rule['expression']}")
+            except CloudFlareAPIError as e:
+                print(f"Error applying firewall rule: {rule}. Error: {e}")
 
     # Apply Custom Header settings
     if custom_header_enabled:
-        cf.zones.pagerules.post(zone_id, data={
-            "targets": [{
-                "target": "url",
-                "constraint": {
-                    "operator": "matches",
-                    "value": f"*.{domain}/*"
-                }
-            }],
-            "actions": [{
-                "id": "set_header",
-                "value": {
-                    "headers": [{
-                        "name": custom_header_key,
-                        "value": custom_header_value
-                    }]
-                }
-            }],
-            "priority": 1,
-            "status": "active"
-        })
-        print(f"Custom header set: {custom_header_key}: {custom_header_value}")
+        try:
+            cf.zones.pagerules.post(zone_id, data={
+                "targets": [{
+                    "target": "url",
+                    "constraint": {
+                        "operator": "matches",
+                        "value": f"*.{domain}/*"
+                    }
+                }],
+                "actions": [{
+                    "id": "set_header",
+                    "value": {
+                        "headers": [{
+                            "name": custom_header_key,
+                            "value": custom_header_value
+                        }]
+                    }
+                }],
+                "priority": 1,
+                "status": "active"
+            })
+            print(f"Custom header set: {custom_header_key}: {custom_header_value}")
+        except CloudFlareAPIError as e:
+            print(f"Error setting custom header: {e}")
 
     # Apply Rate Limiting Rule
     rate_limit_rule = {
@@ -184,12 +219,15 @@ def main():
         "enabled": True,
         "description": "Rate limit rule to limit to 1000 requests per minute for GET requests"
     }
-    response = cf.zones.rate_limits.post(zone_id, data=rate_limit_rule)
-    if 'success' in response and response['success']:
-        print("Rate limiting rule applied successfully.")
-    else:
-        print(f"Failed to apply rate limiting rule: {response}")
-        sys.exit(1)
+    try:
+        response = cf.zones.rate_limits.post(zone_id, data=rate_limit_rule)
+        if 'success' in response and response['success']:
+            print("Rate limiting rule applied successfully.")
+        else:
+            print(f"Failed to apply rate limiting rule: {response}")
+            sys.exit(1)
+    except CloudFlareAPIError as e:
+        print(f"Error applying rate limiting rule: {e}")
 
 if __name__ == "__main__":
     main()

@@ -10,6 +10,8 @@ from pydantic import BaseModel, ValidationError, validator
 from CloudFlare import CloudFlare, CloudFlareAPIError
 from tenacity import retry, stop_after_attempt, wait_exponential
 import argparse
+import subprocess
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -62,28 +64,17 @@ async def apply_cloudflare_setting(cf: CloudFlare, zone_id: str, setting_id: str
         logging.error(f"Error applying {setting_description}: {e}")
         raise
 
-async def fetch_paginated_data(cf: CloudFlare, endpoint: str, params: Dict = None) -> List[Dict]:
+async def fetch_cloudflare_settings(cf: CloudFlare, zone_id: str) -> Dict[str, Any]:
     """
-    Handle paginated data from Cloudflare API
+    Fetch the current Cloudflare settings for a given zone
     """
-    page = 1
-    results = []
-    
-    while True:
-        try:
-            response = await asyncio.to_thread(cf.__getattr__(endpoint).get, params={**params, "page": page})
-            if 'result' in response:
-                results.extend(response['result'])
-                if response['result_info']['page'] >= response['result_info']['total_pages']:
-                    break
-                page += 1
-            else:
-                break
-        except CloudFlareAPIError as e:
-            logging.error(f"Error fetching paginated data from endpoint {endpoint}: {e}")
-            raise
-
-    return results
+    try:
+        settings = await asyncio.to_thread(cf.zones.settings.get, zone_id)
+        logging.info("Fetched current Cloudflare settings.")
+        return settings
+    except CloudFlareAPIError as e:
+        logging.error(f"Error fetching Cloudflare settings: {e}")
+        raise
 
 async def apply_firewall_rules(cf: CloudFlare, zone_id: str, rules: List[Dict]) -> None:
     """
@@ -149,7 +140,7 @@ async def apply_rate_limit(cf: CloudFlare, zone_id: str, rate_limit_rule: Dict) 
         logging.error(f"Error applying rate limiting rule: {e}")
         raise
 
-async def apply_settings_for_zone(cf: CloudFlare, zone_id: str, domain: str, settings: CloudflareSettings) -> None:
+async def apply_settings_for_zone(cf: CloudFlare, zone_id: str, domain: str, settings: CloudflareSettings) -> Dict[str, Any]:
     """
     Apply all settings for a given zone
     """
@@ -235,6 +226,31 @@ async def apply_settings_for_zone(cf: CloudFlare, zone_id: str, domain: str, set
     # Run all tasks concurrently
     await asyncio.gather(*tasks)
 
+    # Fetch updated settings
+    return await fetch_cloudflare_settings(cf, zone_id)
+
+def save_config_to_json(zone_id: str, new_config: Dict[str, Any]):
+    """
+    Save the updated Cloudflare configuration to a JSON file
+    """
+    json_filename = f"conf/{zone_id}_cloudflare_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(json_filename, 'w') as json_file:
+        json.dump(new_config, json_file, indent=4)
+    logging.info(f"Saved updated configuration to {json_filename}.")
+    return json_filename
+
+def commit_and_push_changes(file_path: str):
+    """
+    Commit and push the JSON file with updated Cloudflare settings back to the repository
+    """
+    try:
+        subprocess.run(["git", "add", file_path], check=True)
+        subprocess.run(["git", "commit", "-m", "Update Cloudflare configuration settings"], check=True)
+        subprocess.run(["git", "push"], check=True)
+        logging.info("Changes committed and pushed to the repository.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to commit and push changes: {e}")
+
 async def main(config_path: str):
     # Load configuration from YAML file
     with open(config_path, 'r') as file:
@@ -254,7 +270,15 @@ async def main(config_path: str):
         zone_id = zone.get('id')
         domain = zone.get('domain')
         settings = CloudflareSettings(**zone.get('settings', {}))
-        await apply_settings_for_zone(cf, zone_id, domain, settings)
+
+        # Apply settings and fetch updated configuration
+        new_config = await apply_settings_for_zone(cf, zone_id, domain, settings)
+
+        # Save new configuration to JSON
+        json_file_path = save_config_to_json(zone_id, new_config)
+
+        # Commit and push the changes
+        commit_and_push_changes(json_file_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Apply Cloudflare settings from a configuration file.")

@@ -3,23 +3,52 @@ import sys
 import json
 import asyncio
 import logging
+import yaml
 from typing import List, Dict, Union, Any
 from aiohttp import ClientSession
+from pydantic import BaseModel, ValidationError, validator
 from CloudFlare import CloudFlare, CloudFlareAPIError
 from tenacity import retry, stop_after_attempt, wait_exponential
+import argparse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def get_env_variable(var_name: str, default: Any = None, required: bool = False) -> str:
-    """
-    Helper function to get environment variable with validation
-    """
-    value = os.getenv(var_name, default)
-    if required and not value:
-        logging.error(f"Environment variable '{var_name}' is required but not set.")
-        sys.exit(1)
-    return value
+class CloudflareSettings(BaseModel):
+    enable_http3: bool = False
+    enable_hsts: bool = False
+    hsts_max_age: int = 0
+    tls_min_version: str = "1.2"
+    secure_ciphers: str = ""
+    enable_ddos_protection: bool = False
+    enable_waf: bool = False
+    enable_dnssec: bool = False
+    enable_https_rewrites: bool = False
+    geo_blocking_enabled: bool = False
+    geo_blocking_countries: List[str] = []
+    custom_header_enabled: bool = False
+    custom_header_key: str = ""
+    custom_header_value: str = ""
+    cache_level: str = "aggressive"
+    browser_cache_ttl: int = 14400
+    polish_mode: str = "off"
+    rate_limit: Dict[str, Union[int, str]] = {}
+    firewall_rules: List[Dict[str, str]] = []
+
+    @validator("tls_min_version")
+    def validate_tls_min_version(cls, value):
+        if value not in {"1.0", "1.1", "1.2", "1.3"}:
+            raise ValueError("Invalid TLS version. Must be one of '1.0', '1.1', '1.2', '1.3'.")
+        return value
+
+    @validator("polish_mode")
+    def validate_polish_mode(cls, value):
+        if value not in {"off", "lossless", "lossy"}:
+            raise ValueError("Invalid Polish mode. Must be 'off', 'lossless', or 'lossy'.")
+        return value
+
+class Config(BaseModel):
+    cloudflare: Dict[str, Any]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=10))
 async def apply_cloudflare_setting(cf: CloudFlare, zone_id: str, setting_id: str, setting_value: Union[str, Dict], setting_description: str) -> None:
@@ -120,99 +149,44 @@ async def apply_rate_limit(cf: CloudFlare, zone_id: str, rate_limit_rule: Dict) 
         logging.error(f"Error applying rate limiting rule: {e}")
         raise
 
-async def apply_cache_settings(cf: CloudFlare, zone_id: str, cache_level: str, browser_cache_ttl: int) -> None:
+async def apply_settings_for_zone(cf: CloudFlare, zone_id: str, domain: str, settings: CloudflareSettings) -> None:
     """
-    Apply caching settings
+    Apply all settings for a given zone
     """
-    try:
-        await asyncio.to_thread(cf.zones.settings.patch, zone_id, data={
-            "items": [
-                {"id": "cache_level", "value": cache_level},
-                {"id": "browser_cache_ttl", "value": browser_cache_ttl}
-            ]
-        })
-        logging.info(f"Cache settings applied: Cache Level = {cache_level}, Browser Cache TTL = {browser_cache_ttl}")
-    except CloudFlareAPIError as e:
-        logging.error(f"Error applying cache settings: {e}")
-        raise
-
-async def apply_image_optimization(cf: CloudFlare, zone_id: str, polish_mode: str) -> None:
-    """
-    Apply image optimization settings
-    """
-    try:
-        await asyncio.to_thread(cf.zones.settings.patch, zone_id, data={
-            "items": [
-                {"id": "polish", "value": polish_mode}
-            ]
-        })
-        logging.info(f"Image optimization (Polish) mode set to {polish_mode}")
-    except CloudFlareAPIError as e:
-        logging.error(f"Error applying image optimization settings: {e}")
-        raise
-
-async def main():
-    # Load environment variables
-    cf_token = get_env_variable('CLOUDFLARE_API_TOKEN', required=True)
-    zone_id = get_env_variable('CLOUDFLARE_ZONE_ID', required=True)
-    domain = get_env_variable('DOMAIN', required=True)
-    enable_http3 = get_env_variable('ENABLE_HTTP3', 'false').lower() == 'true'
-    enable_hsts = get_env_variable('ENABLE_HSTS', 'false').lower() == 'true'
-    hsts_max_age = int(get_env_variable('HSTS_MAX_AGE', '0'))
-    tls_min_version = get_env_variable('TLS_MIN_VERSION', '1.2')
-    secure_ciphers = get_env_variable('SECURE_CIPHERS')
-    enable_ddos_protection = get_env_variable('ENABLE_DDOS_PROTECTION', 'false').lower() == 'true'
-    enable_waf = get_env_variable('ENABLE_WAF', 'false').lower() == 'true'
-    enable_dnssec = get_env_variable('ENABLE_DNSSEC', 'false').lower() == 'true'
-    enable_https_rewrites = get_env_variable('ENABLE_HTTPS_REWRITES', 'false').lower() == 'true'
-    geo_blocking_enabled = get_env_variable('GEO_BLOCKING_ENABLED', 'false').lower() == 'true'
-    geo_blocking_countries = get_env_variable('GEO_BLOCKING_COUNTRIES', '').split(',')
-    custom_header_enabled = get_env_variable('CUSTOM_HEADER_ENABLED', 'false').lower() == 'true'
-    custom_header_key = get_env_variable('CUSTOM_HEADER_KEY')
-    custom_header_value = get_env_variable('CUSTOM_HEADER_VALUE')
-    cache_level = get_env_variable('CACHE_LEVEL', 'aggressive')
-    browser_cache_ttl = int(get_env_variable('BROWSER_CACHE_TTL', '14400'))
-    polish_mode = get_env_variable('POLISH_MODE', 'lossless')
-
-    # Initialize Cloudflare client
-    cf = CloudFlare(token=cf_token)
-
-    # List of tasks for asynchronous execution
     tasks = []
 
-    # Apply settings
-    if enable_http3:
+    if settings.enable_http3:
         tasks.append(apply_cloudflare_setting(cf, zone_id, 'http3', 'on', "HTTP/3"))
 
-    if enable_hsts:
+    if settings.enable_hsts:
         tasks.append(apply_cloudflare_setting(cf, zone_id, 'security_header', {
             "strict_transport_security": {
                 "enabled": True,
-                "max_age": hsts_max_age,
+                "max_age": settings.hsts_max_age,
                 "include_subdomains": True,
                 "preload": True
             }
         }, "HSTS"))
 
-    tasks.append(apply_cloudflare_setting(cf, zone_id, 'min_tls_version', tls_min_version, "TLS minimum version"))
+    tasks.append(apply_cloudflare_setting(cf, zone_id, 'min_tls_version', settings.tls_min_version, "TLS minimum version"))
     
-    if secure_ciphers:
-        tasks.append(apply_cloudflare_setting(cf, zone_id, 'ciphers', secure_ciphers.split(","), "Secure ciphers"))
+    if settings.secure_ciphers:
+        tasks.append(apply_cloudflare_setting(cf, zone_id, 'ciphers', settings.secure_ciphers.split(","), "Secure ciphers"))
 
-    if enable_ddos_protection:
+    if settings.enable_ddos_protection:
         tasks.append(apply_cloudflare_setting(cf, zone_id, 'ddos_protection', 'on', "DDoS protection"))
 
-    if enable_waf:
+    if settings.enable_waf:
         tasks.append(apply_cloudflare_setting(cf, zone_id, 'waf', 'on', "Web Application Firewall"))
 
-    if enable_dnssec:
+    if settings.enable_dnssec:
         tasks.append(apply_cloudflare_setting(cf, zone_id, 'dnssec', 'active', "DNSSEC"))
 
-    if enable_https_rewrites:
+    if settings.enable_https_rewrites:
         tasks.append(apply_cloudflare_setting(cf, zone_id, 'automatic_https_rewrites', 'on', "Automatic HTTPS Rewrites"))
 
-    if geo_blocking_enabled:
-        for country in geo_blocking_countries:
+    if settings.geo_blocking_enabled:
+        for country in settings.geo_blocking_countries:
             if country:
                 tasks.append(apply_firewall_rule(cf, zone_id, {
                     "action": "block",
@@ -221,52 +195,70 @@ async def main():
                 }))
 
     # Apply Firewall rules
-    firewall_rules_env = get_env_variable('FIREWALL_RULES', '[]')
-    try:
-        firewall_rules = json.loads(firewall_rules_env)
-        if isinstance(firewall_rules, list):
-            tasks.append(apply_firewall_rules(cf, zone_id, firewall_rules))
-        else:
-            logging.error("FIREWALL_RULES should be a list")
-            sys.exit(1)
-    except json.JSONDecodeError as e:
-        logging.error(f"Error decoding FIREWALL_RULES: {e}")
-        sys.exit(1)
+    if settings.firewall_rules:
+        tasks.append(apply_firewall_rules(cf, zone_id, settings.firewall_rules))
 
     # Apply Custom Header if enabled
-    if custom_header_enabled:
-        tasks.append(apply_custom_header(cf, zone_id, domain, custom_header_key, custom_header_value))
+    if settings.custom_header_enabled:
+        tasks.append(apply_custom_header(cf, zone_id, domain, settings.custom_header_key, settings.custom_header_value))
 
-    # Define Rate Limiting Rule
-    rate_limit_rule = {
-        "threshold": 1000,
-        "period": 60,
-        "action": {
-            "mode": "simulate",
-            "timeout": 60,
-            "response": {
-                "content_type": "text/plain",
-                "body": "This request has been rate-limited."
-            }
-        },
-        "match": {
-            "request": {"methods": ["GET"]},
-            "response": {"origin_traffic": True},
-            "url": "*"
-        },
-        "enabled": True,
-        "description": "Rate limit rule to limit to 1000 requests per minute for GET requests"
-    }
-    tasks.append(apply_rate_limit(cf, zone_id, rate_limit_rule))
+    # Apply Rate Limiting Rule
+    if settings.rate_limit:
+        rate_limit_rule = {
+            "threshold": settings.rate_limit.get("threshold", 1000),
+            "period": settings.rate_limit.get("period", 60),
+            "action": {
+                "mode": settings.rate_limit.get("action", "simulate"),
+                "timeout": settings.rate_limit.get("timeout", 60),
+                "response": {
+                    "content_type": settings.rate_limit.get("content_type", "text/plain"),
+                    "body": settings.rate_limit.get("body", "This request has been rate-limited.")
+                }
+            },
+            "match": {
+                "request": {"methods": ["GET"]},
+                "response": {"origin_traffic": True},
+                "url": "*"
+            },
+            "enabled": True,
+            "description": "Rate limit rule to limit requests per configuration"
+        }
+        tasks.append(apply_rate_limit(cf, zone_id, rate_limit_rule))
 
     # Apply Cache Settings
-    tasks.append(apply_cache_settings(cf, zone_id, cache_level, browser_cache_ttl))
+    tasks.append(apply_cloudflare_setting(cf, zone_id, 'cache_level', settings.cache_level, "Cache level"))
+    tasks.append(apply_cloudflare_setting(cf, zone_id, 'browser_cache_ttl', settings.browser_cache_ttl, "Browser Cache TTL"))
 
     # Apply Image Optimization Settings
-    tasks.append(apply_image_optimization(cf, zone_id, polish_mode))
+    tasks.append(apply_cloudflare_setting(cf, zone_id, 'polish', settings.polish_mode, "Image Optimization (Polish Mode)"))
 
     # Run all tasks concurrently
     await asyncio.gather(*tasks)
 
+async def main(config_path: str):
+    # Load configuration from YAML file
+    with open(config_path, 'r') as file:
+        config_data = yaml.safe_load(file)
+    
+    try:
+        config = Config.parse_obj(config_data)
+    except ValidationError as e:
+        logging.error(f"Invalid configuration file: {e}")
+        sys.exit(1)
+
+    cf_token = config.cloudflare.get('api_token')
+    cf = CloudFlare(token=cf_token)
+
+    # Process each zone
+    for zone in config.cloudflare.get('zones', []):
+        zone_id = zone.get('id')
+        domain = zone.get('domain')
+        settings = CloudflareSettings(**zone.get('settings', {}))
+        await apply_settings_for_zone(cf, zone_id, domain, settings)
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Apply Cloudflare settings from a configuration file.")
+    parser.add_argument('--config', type=str, required=True, help="Path to the configuration YAML file.")
+    args = parser.parse_args()
+
+    asyncio.run(main(args.config))

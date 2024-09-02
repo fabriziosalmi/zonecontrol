@@ -13,8 +13,14 @@ import argparse
 import subprocess
 from datetime import datetime
 
+# Check if running in a GitHub Actions environment
+GITHUB_ACTIONS = os.getenv('GITHUB_ACTIONS') == 'true'
+
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+if GITHUB_ACTIONS:
+    logging.basicConfig(level=logging.INFO, format='::%(levelname)s :: %(message)s')
+else:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class CloudflareSettings(BaseModel):
     enable_http3: bool = False
@@ -40,13 +46,13 @@ class CloudflareSettings(BaseModel):
     @validator("tls_min_version")
     def validate_tls_min_version(cls, value):
         if value not in {"1.0", "1.1", "1.2", "1.3"}:
-            raise ValueError("Invalid TLS version. Must be one of '1.0', '1.1', '1.2', '1.3'.")
+            raise ValueError("❌ Invalid TLS version. Must be one of '1.0', '1.1', '1.2', '1.3'.")
         return value
 
     @validator("polish_mode")
     def validate_polish_mode(cls, value):
         if value not in {"off", "lossless", "lossy"}:
-            raise ValueError("Invalid Polish mode. Must be 'off', 'lossless', or 'lossy'.")
+            raise ValueError("❌ Invalid Polish mode. Must be 'off', 'lossless', or 'lossy'.")
         return value
 
 class Config(BaseModel):
@@ -59,9 +65,9 @@ async def apply_cloudflare_setting(cf: CloudFlare, zone_id: str, setting_id: str
     """
     try:
         await asyncio.to_thread(cf.zones.settings.patch, zone_id, data={"items": [{"id": setting_id, "value": setting_value}]})
-        logging.info(f"{setting_description} applied.")
+        logging.info(f"✅ {setting_description} applied successfully.")
     except CloudFlareAPIError as e:
-        logging.error(f"Error applying {setting_description}: {e}")
+        logging.error(f"❌ Error applying {setting_description}: {e}")
         raise
 
 async def fetch_cloudflare_settings(cf: CloudFlare, zone_id: str) -> Dict[str, Any]:
@@ -70,10 +76,10 @@ async def fetch_cloudflare_settings(cf: CloudFlare, zone_id: str) -> Dict[str, A
     """
     try:
         settings = await asyncio.to_thread(cf.zones.settings.get, zone_id)
-        logging.info("Fetched current Cloudflare settings.")
+        logging.info("📝 Fetched current Cloudflare settings.")
         return settings
     except CloudFlareAPIError as e:
-        logging.error(f"Error fetching Cloudflare settings: {e}")
+        logging.error(f"❌ Error fetching Cloudflare settings: {e}")
         raise
 
 async def apply_firewall_rules(cf: CloudFlare, zone_id: str, rules: List[Dict]) -> None:
@@ -90,9 +96,9 @@ async def apply_firewall_rule(cf: CloudFlare, zone_id: str, rule: Dict) -> None:
     """
     try:
         await asyncio.to_thread(cf.zones.firewall.rules.post, zone_id, data=rule)
-        logging.info(f"{rule['action']} rule applied: {rule['filter']['expression']}")
+        logging.info(f"🚧 {rule['action']} rule applied: {rule['filter']['expression']}")
     except CloudFlareAPIError as e:
-        logging.error(f"Error applying firewall rule: {rule}. Error: {e}")
+        logging.error(f"❌ Error applying firewall rule: {rule}. Error: {e}")
         raise
 
 async def apply_custom_header(cf: CloudFlare, zone_id: str, domain: str, custom_header_key: str, custom_header_value: str) -> None:
@@ -120,9 +126,9 @@ async def apply_custom_header(cf: CloudFlare, zone_id: str, domain: str, custom_
             "priority": 1,
             "status": "active"
         })
-        logging.info(f"Custom header set: {custom_header_key}: {custom_header_value}")
+        logging.info(f"🔧 Custom header set: {custom_header_key}: {custom_header_value}")
     except CloudFlareAPIError as e:
-        logging.error(f"Error setting custom header: {e}")
+        logging.error(f"❌ Error setting custom header: {e}")
         raise
 
 async def apply_rate_limit(cf: CloudFlare, zone_id: str, rate_limit_rule: Dict) -> None:
@@ -132,12 +138,12 @@ async def apply_rate_limit(cf: CloudFlare, zone_id: str, rate_limit_rule: Dict) 
     try:
         response = await asyncio.to_thread(cf.zones.rate_limits.post, zone_id, data=rate_limit_rule)
         if response.get('success', False):
-            logging.info("Rate limiting rule applied successfully.")
+            logging.info("📊 Rate limiting rule applied successfully.")
         else:
-            logging.error(f"Failed to apply rate limiting rule: {response}")
+            logging.error(f"❌ Failed to apply rate limiting rule: {response}")
             sys.exit(1)
     except CloudFlareAPIError as e:
-        logging.error(f"Error applying rate limiting rule: {e}")
+        logging.error(f"❌ Error applying rate limiting rule: {e}")
         raise
 
 async def apply_settings_for_zone(cf: CloudFlare, zone_id: str, domain: str, settings: CloudflareSettings) -> Dict[str, Any]:
@@ -236,7 +242,7 @@ def save_config_to_json(zone_id: str, new_config: Dict[str, Any]):
     json_filename = f"conf/{zone_id}_cloudflare_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(json_filename, 'w') as json_file:
         json.dump(new_config, json_file, indent=4)
-    logging.info(f"Saved updated configuration to {json_filename}.")
+    logging.info(f"📁 Saved updated configuration to {json_filename}.")
     return json_filename
 
 def commit_and_push_changes(file_path: str):
@@ -247,9 +253,9 @@ def commit_and_push_changes(file_path: str):
         subprocess.run(["git", "add", file_path], check=True)
         subprocess.run(["git", "commit", "-m", "Update Cloudflare configuration settings"], check=True)
         subprocess.run(["git", "push"], check=True)
-        logging.info("Changes committed and pushed to the repository.")
+        logging.info("🚀 Changes committed and pushed to the repository.")
     except subprocess.CalledProcessError as e:
-        logging.error(f"Failed to commit and push changes: {e}")
+        logging.error(f"❌ Failed to commit and push changes: {e}")
 
 async def main(config_path: str):
     # Load configuration from YAML file
@@ -259,7 +265,7 @@ async def main(config_path: str):
     try:
         config = Config.parse_obj(config_data)
     except ValidationError as e:
-        logging.error(f"Invalid configuration file: {e}")
+        logging.error(f"❌ Invalid configuration file: {e}")
         sys.exit(1)
 
     cf_token = config.cloudflare.get('api_token')
@@ -270,6 +276,8 @@ async def main(config_path: str):
         zone_id = zone.get('id')
         domain = zone.get('domain')
         settings = CloudflareSettings(**zone.get('settings', {}))
+
+        logging.info(f"🔄 Processing zone {zone_id} for domain {domain}...")
 
         # Apply settings and fetch updated configuration
         new_config = await apply_settings_for_zone(cf, zone_id, domain, settings)

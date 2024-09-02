@@ -1,0 +1,33 @@
+cloudflare:
+  api_token: "your_cloudflare_api_token"
+  zones:
+    - id: "zone_id_1"
+      domain: "example.com"
+      settings:
+        enable_http3: true
+        enable_hsts: true
+        hsts_max_age: 86400
+        tls_min_version: "1.2"
+        secure_ciphers: "AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256"
+        enable_ddos_protection: true
+        enable_waf: true
+        enable_dnssec: true
+        enable_https_rewrites: true
+        geo_blocking_enabled: true
+        geo_blocking_countries: ["US", "CN", "RU"]
+        custom_header_enabled: true
+        custom_header_key: "X-Custom-Security"
+        custom_header_value: "Enabled"
+        cache_level: "aggressive"
+        browser_cache_ttl: 14400
+        polish_mode: "lossless"
+        rate_limit:
+          threshold: 1000
+          period: 60
+          action: simulate
+          timeout: 60
+          content_type: "text/plain"
+          body: "This request has been rate-limited."
+        firewall_rules:
+          - action: "block"
+            expression: "ip.geoip.country eq 'RU'"

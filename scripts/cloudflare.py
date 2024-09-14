@@ -58,15 +58,26 @@ class CloudflareSettings(BaseModel):
 class Config(BaseModel):
     cloudflare: Dict[str, Any]
 
-async def apply_settings_for_zone(cf, zone_id: str, domain: str, settings: CloudflareSettings) -> Dict[str, Any]:
+async def apply_settings_for_zone(cf: CloudFlare, zone_id: str, domain: str, settings: CloudflareSettings) -> Dict[str, Any]:
     logging.info(f"Applying settings for domain {domain}...")
-    try:
-        # Logic to apply Cloudflare settings goes here
-        # Example: cf.zones.settings.patch(zone_id, data=settings.dict())
-        return {}  # Replace with actual response data
-    except CloudFlareAPIError as e:
-        logging.error(f"Failed to apply settings for domain {domain}: {e}")
-        return {}
+
+    updated_settings = {}
+
+    async with ClientSession() as session:
+        for key, value in settings.dict().items():
+            if value is not None:  # Only update settings that are not None
+                endpoint = f'zones/{zone_id}/settings/{key}'
+                try:
+                    logging.info(f"Updating {key} to {value} for {domain}...")
+                    response = await cf.zones.settings.async_patch(zone_id, data={key: value})
+                    updated_settings[key] = response
+                    logging.info(f"Successfully updated {key} to {value} for {domain}.")
+                except CloudFlareAPIError as e:
+                    logging.error(f"Failed to update {key} for {domain}: {e}")
+                    updated_settings[key] = {'error': str(e)}
+                    continue
+
+    return updated_settings
 
 def save_config_to_json(zone_id: str, config: Dict[str, Any]) -> str:
     json_path = f"output/{zone_id}_config.json"

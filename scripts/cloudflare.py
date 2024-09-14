@@ -101,12 +101,25 @@ async def main(config_path: str):
         logging.error(f"Invalid configuration file: {e}")
         sys.exit(1)
 
-    cf_token = config.cloudflare.get('api_token')
+    cf_token = os.getenv('CLOUDFLARE_API_TOKEN')
+    if not cf_token:
+        logging.error("Cloudflare API token not found in environment variables.")
+        sys.exit(1)
+
+    zone_id = os.getenv('CLOUDFLARE_ZONE_ID')
+    if not zone_id:
+        logging.error("Cloudflare Zone ID not found in environment variables.")
+        sys.exit(1)
+
+    fqdn = os.getenv('CLOUDFLARE_FQDN')
+    if not fqdn:
+        logging.error("Cloudflare FQDN not found in environment variables.")
+        sys.exit(1)
+
     cf = CloudFlare(token=cf_token)
 
     for zone in config.cloudflare.get('zones', []):
-        zone_id = zone.get('id')
-        domain = zone.get('domain')
+        domain = fqdn
         settings = CloudflareSettings(**zone.get('settings', {}))
 
         logging.info(f"Processing zone {zone_id} for domain {domain}...")

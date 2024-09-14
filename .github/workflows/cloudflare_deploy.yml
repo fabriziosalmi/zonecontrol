@@ -2,6 +2,8 @@ name: Cloudflare Settings Automation
 
 on:
   workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight
 
 jobs:
   apply-settings:
@@ -22,7 +24,7 @@ jobs:
           source venv/bin/activate
           python -m pip install --upgrade pip
           pip install --force-reinstall aiohttp pydantic cloudflare tenacity pyyaml
-        shell: bash  # Ensure that the script runs in a bash shell
+        shell: bash  # Ensure the script runs in a bash shell
 
       - name: Verify configuration file
         run: |
@@ -31,7 +33,7 @@ jobs:
             echo "::error::Configuration file not found at config/cloudflare.yaml"
             exit 1
           fi
-        shell: bash  # Ensure that the script runs in a bash shell
+        shell: bash  # Ensure the script runs in a bash shell
 
       - name: Set environment variables
         env:
@@ -41,7 +43,7 @@ jobs:
         run: |
           source venv/bin/activate
           echo "Environment variables set."
-        shell: bash  # Ensure that the script runs in a bash shell
+        shell: bash  # Ensure the script runs in a bash shell
 
       - name: Run Cloudflare script
         env:
@@ -51,7 +53,7 @@ jobs:
         run: |
           source venv/bin/activate
           python scripts/apply_cloudflare.py --config config/cloudflare.yaml
-        shell: bash  # Ensure that the script runs in a bash shell
+        shell: bash  # Ensure the script runs in a bash shell
 
       - name: Cleanup and feedback
         if: failure()

@@ -2,6 +2,8 @@ name: Cloudflare Settings Automation
 
 on:
   workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight
 
 jobs:
   apply-settings:
@@ -20,12 +22,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install aiohttp pydantic cloudflare tenacity pyyaml
 
-      - name: Verify configuration file
-        run: |
-          if [ ! -f config/cloudflare.yaml ]; then
-            echo "::error::Configuration file not found at config/cloudflare.yaml"
-            exit 1
-          fi
+      - name: Set up environment variables
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE1_ID }}
+          CLOUDFLARE_FQDN: ${{ secrets.CLOUDFLARE_ZONE1_FQDN }}
+        run: echo "Environment variables set."
 
       - name: Run Cloudflare script
         run: python scripts/cloudflare.py --config config/cloudflare.yaml

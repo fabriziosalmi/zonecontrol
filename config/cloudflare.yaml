@@ -1,31 +1,29 @@
 cloudflare:
-  api_token: "your_cloudflare_api_token"
+  api_token: "{{ secrets.CLOUDFLARE_API_TOKEN }}"
   zones:
-    - id: "zone_id_1"
+    - id: "your_zone_id_here"
       domain: "example.com"
       settings:
-        enable_http3: true  # Enable HTTP/3 for improved performance.
-        enable_hsts: true  # Enforce HTTPS with HSTS.
-        hsts_max_age: 31536000  # Set HSTS max age to 1 year.
-        tls_min_version: "1.2"  # Enforce TLS version 1.2 or higher.
-        secure_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256"  # Use strong ciphers.
-        enable_ddos_protection: true  # Enable DDoS protection.
-        enable_waf: true  # Enable Web Application Firewall.
-        enable_dnssec: true  # Enable DNSSEC for secure DNS queries.
-        enable_https_rewrites: true  # Automatically rewrite HTTP to HTTPS.
-        geo_blocking_enabled: false  # Disable geo-blocking unless needed.
-        geo_blocking_countries: []  # No specific countries blocked by default.
-        custom_header_enabled: false  # Disable custom headers unless required.
-        custom_header_key: ""  # No custom header key specified.
-        custom_header_value: ""  # No custom header value specified.
-        cache_level: "Standard"  # Use Standard cache level to balance performance and content freshness.
-        browser_cache_ttl: 14400  # Set browser cache TTL to 4 hours.
-        polish_mode: "lossless"  # Use lossless image optimization.
-        rate_limit:  # Set basic rate limiting to simulate behavior.
-          threshold: 1000
-          period: 60
-          action: simulate
-          timeout: 60
-          content_type: "text/plain"
-          body: "This request has been rate-limited."
-        firewall_rules: []  # No specific firewall rules by default.
+        enable_http3: true
+        enable_hsts: true
+        hsts_max_age: 31536000
+        tls_min_version: "1.2"
+        secure_ciphers: "ECDHE-RSA-AES128-GCM-SHA256"
+        enable_ddos_protection: true
+        enable_waf: true
+        enable_dnssec: true
+        enable_https_rewrites: false
+        geo_blocking_enabled: false
+        geo_blocking_countries: []
+        custom_header_enabled: false
+        custom_header_key: "X-Custom-Header"
+        custom_header_value: "Configured by https://github.com/fabriziosalmi/flared"
+        cache_level: "aggressive"
+        browser_cache_ttl: 14400
+        polish_mode: "lossless"
+        rate_limit:
+          requests_per_minute: 100
+        firewall_rules:
+          - action: "block"
+            description: "Block traffic from specific country"
+            filter: "ip.geoip.country eq 'CN'"

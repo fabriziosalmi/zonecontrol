@@ -16,34 +16,42 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install dependencies
+      - name: Create and activate virtual environment
         run: |
+          python -m venv venv
+          source venv/bin/activate
           python -m pip install --upgrade pip
           pip install --force-reinstall aiohttp pydantic cloudflare tenacity pyyaml
-        continue-on-error: false  # Stop the workflow if dependencies fail to install
+        shell: bash  # Ensure that the script runs in a bash shell
 
       - name: Verify configuration file
         run: |
+          source venv/bin/activate
           if [ ! -f config/cloudflare.yaml ]; then
             echo "::error::Configuration file not found at config/cloudflare.yaml"
             exit 1
           fi
-        continue-on-error: false  # Stop the workflow if the configuration file is not found
+        shell: bash  # Ensure that the script runs in a bash shell
 
       - name: Set environment variables
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           CLOUDFLARE_FQDN: ${{ secrets.CLOUDFLARE_FQDN }}
-        run: echo "Environment variables set."
+        run: |
+          source venv/bin/activate
+          echo "Environment variables set."
+        shell: bash  # Ensure that the script runs in a bash shell
 
       - name: Run Cloudflare script
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           CLOUDFLARE_FQDN: ${{ secrets.CLOUDFLARE_FQDN }}
-        run: python scripts/apply_cloudflare.py --config config/cloudflare.yaml
-        continue-on-error: false  # Stop the workflow if the script execution fails
+        run: |
+          source venv/bin/activate
+          python scripts/apply_cloudflare.py --config config/cloudflare.yaml
+        shell: bash  # Ensure that the script runs in a bash shell
 
       - name: Cleanup and feedback
         if: failure()

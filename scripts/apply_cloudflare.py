@@ -7,7 +7,7 @@ import yaml
 from typing import List, Dict, Union, Any
 from aiohttp import ClientSession
 from pydantic import BaseModel, ValidationError, validator
-from CloudFlare.cloudflare import CloudFlare, CloudFlareAPIError
+from cloudflare import CloudFlare, CloudFlareAPIError
 from tenacity import retry, stop_after_attempt, wait_exponential
 import argparse
 import subprocess

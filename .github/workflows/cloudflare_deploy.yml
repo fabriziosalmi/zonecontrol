@@ -42,7 +42,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           CLOUDFLARE_FQDN: ${{ secrets.CLOUDFLARE_FQDN }}
-        run: python scripts/cloudflare.py --config config/cloudflare.yaml
+        run: python scripts/apply_cloudflare.py --config config/cloudflare.yaml
         continue-on-error: false  # Stop the workflow if the script execution fails
 
       - name: Cleanup and feedback

@@ -5,11 +5,10 @@ import logging
 import yaml
 import requests
 from typing import List, Dict, Union, Any, Optional
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, field_validator
 from tenacity import retry, stop_after_attempt, wait_exponential
 import argparse
 import subprocess
-from datetime import datetime
 
 # Check if running in a GitHub Actions environment
 GITHUB_ACTIONS = os.getenv('GITHUB_ACTIONS') == 'true'
@@ -20,6 +19,8 @@ if GITHUB_ACTIONS:
 else:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
+# Cloudflare settings validation using Pydantic
 class CloudflareSettings(BaseModel):
     enable_http3: Optional[bool] = False
     enable_hsts: Optional[bool] = False
@@ -41,20 +42,41 @@ class CloudflareSettings(BaseModel):
     rate_limit: Optional[Dict[str, Union[int, str]]] = {}
     firewall_rules: Optional[List[Dict[str, str]]] = []
 
-    @validator("tls_min_version")
+    @field_validator("tls_min_version")
     def validate_tls_min_version(cls, value):
         if value not in {"1.0", "1.1", "1.2", "1.3"}:
             raise ValueError("❌ Invalid TLS version. Must be one of '1.0', '1.1', '1.2', '1.3'.")
         return value
 
-    @validator("polish_mode")
+    @field_validator("polish_mode")
     def validate_polish_mode(cls, value):
         if value not in {"off", "lossless", "lossy"}:
             raise ValueError("❌ Invalid Polish mode. Must be 'off', 'lossless', or 'lossy'.")
         return value
 
+
+# Root config class
 class Config(BaseModel):
     cloudflare: Dict[str, Any]
+
+
+# Function to validate the API token by calling the Cloudflare API
+def validate_api_token(api_token: str) -> bool:
+    url = "https://api.cloudflare.com/client/v4/user/tokens/verify"
+    headers = {
+        'Authorization': f'Bearer {api_token}',
+        'Content-Type': 'application/json'
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Will raise HTTPError for 4xx/5xx status codes
+        logging.info("Cloudflare API token is valid.")
+        return True
+    except requests.RequestException as e:
+        logging.error(f"API token validation failed: {e}")
+        return False
+
 
 # Retry with exponential backoff for API errors
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -65,25 +87,29 @@ def apply_settings_for_zone(api_token: str, zone_id: str, domain: str, settings:
         'Authorization': f'Bearer {api_token}',
         'Content-Type': 'application/json'
     }
-    
+
     base_url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/settings"
     settings_dict = settings.dict(exclude_none=True)  # Exclude None values
     updated_settings = {}
 
     for key, value in settings_dict.items():
-        if value is not None:  # Only update settings that are not None
+        if value is not None:
             logging.info(f"Updating {key} to {value} for {domain}...")
             try:
                 response = requests.patch(f"{base_url}/{key}", headers=headers, json={"value": value})
-                response.raise_for_status()  # Raise error for bad responses
+                response.raise_for_status()
                 updated_settings[key] = response.json()
                 logging.info(f"Successfully updated {key} to {value} for {domain}.")
-            except requests.RequestException as e:
-                logging.error(f"Failed to update {key} for {domain}: {e}")
-                updated_settings[key] = {'error': str(e)}
-
+            except requests.HTTPError as http_err:
+                if response.status_code == 403:
+                    logging.error(f"Forbidden (403): Failed to update {key} for {domain}. Aborting operation.")
+                    sys.exit(1)  # Exit the script if forbidden errors occur
+                logging.error(f"Failed to update {key} for {domain}: {http_err}")
+                updated_settings[key] = {'error': str(http_err)}
     return updated_settings
 
+
+# Function to save the updated config as JSON
 def save_config_to_json(zone_id: str, config: Dict[str, Any]) -> str:
     json_path = f"output/{zone_id}_config.json"
     try:
@@ -95,6 +121,8 @@ def save_config_to_json(zone_id: str, config: Dict[str, Any]) -> str:
         logging.error(f"Failed to save configuration to JSON: {e}")
     return json_path
 
+
+# Function to commit and push changes to the repository
 def commit_and_push_changes(file_path: str):
     try:
         subprocess.run(['git', 'add', file_path], check=True)
@@ -105,6 +133,8 @@ def commit_and_push_changes(file_path: str):
     except subprocess.CalledProcessError as e:
         logging.error(f"No changes to commit: {e}")
 
+
+# Main function
 def main(config_path: str):
     try:
         with open(config_path, 'r') as file:
@@ -122,6 +152,11 @@ def main(config_path: str):
     api_token = os.getenv('CLOUDFLARE_API_TOKEN')
     if not api_token:
         logging.error("Cloudflare API token not found in environment variables.")
+        sys.exit(1)
+
+    # Validate the API token before proceeding
+    if not validate_api_token(api_token):
+        logging.error("API token validation failed. Exiting.")
         sys.exit(1)
 
     zone_id = os.getenv('CLOUDFLARE_ZONE_ID')
@@ -143,6 +178,7 @@ def main(config_path: str):
         new_config = apply_settings_for_zone(api_token, zone_id, domain, settings)
         json_file_path = save_config_to_json(zone_id, new_config)
         commit_and_push_changes(json_file_path)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Apply Cloudflare settings from a configuration file.")

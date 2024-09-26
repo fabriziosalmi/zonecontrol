@@ -1,164 +1,119 @@
-# Flared
+# 🌐 Flared (Cloudflare Zones Settings Automation)
 
-This repository contains a Python script to automate the configuration of Cloudflare settings for one or more zones. The script applies security and performance settings, updates configurations, and tracks changes by saving them to JSON files and pushing them back to the repository.
+Welcome to **Flared** (Cloudflare Zones Settings Automation), a powerful, scalable, and fully automated solution for managing and applying your Cloudflare zone configurations across multiple domains. This tool allows you to define default configurations and customize settings for individual domains, all while leveraging Cloudflare’s robust API for performance, security, and caching management.
 
-## Table of Contents
+## 🚀 Project Summary
 
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Configuration](#configuration)
-  - [YAML Configuration File](#yaml-configuration-file)
-- [Usage](#usage)
-- [Suggested Default Settings](#suggested-default-settings)
-- [Running in GitHub Actions](#running-in-github-actions)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+This project provides an **automated and centralized solution** to manage multiple Cloudflare domains (zones) using a **single YAML configuration file**. By defining your zone configurations in a declarative manner, you can easily apply settings such as SSL/TLS configurations, HTTP/3, caching rules, and performance optimizations across all your domains with a simple script.
 
-## Features
+### Key Features:
+- **Multi-domain support** for scalable zone management.
+- **Declarative YAML configuration** for easy adjustments.
+- **CI/CD automation** with GitHub Actions or other pipelines.
+- **Free plan compatibility** with Cloudflare’s most essential settings.
 
-- Automates applying Cloudflare settings (e.g., HTTP/3, HSTS, TLS, WAF, DNSSEC).
-- Supports multiple zones and configurations via a YAML file.
-- Provides detailed logging with emojis for clear communication.
-- Saves configuration changes to JSON files.
-- Automatically commits and pushes changes to the repository.
-- Compatible with GitHub Actions for CI/CD workflows.
+## ✨ Features Overview
 
-## Prerequisites
+### Core Features
+- **Multi-Domain Support**: Manage multiple Cloudflare zones/domains from a single configuration file.
+- **Default Configurations**: Define default settings that apply to all zones, with the ability to override them for specific domains.
+- **Customization**: Tailor settings like SSL/TLS versions, HTTP/3, Rocket Loader, Brotli compression, caching, and more.
+- **Free Plan Compatible**: Out-of-the-box support for Cloudflare's free plan settings.
 
-- Python 3.7 or higher
-- Cloudflare account with API token
-- Git installed and configured with access to the repository
+### Automation and Security
+- **API Token Security**: Securely handle Cloudflare API tokens via GitHub Secrets.
+- **Automation**: Integrate with GitHub Actions or CI/CD tools for recurring updates.
+- **Error Handling & Logging**: Comprehensive logging and robust error handling, ensuring unsupported configurations are skipped without breaking the workflow.
+- **Version Control**: Automatically push updates to your repository for easy configuration tracking.
 
-## Installation
+## 🛠️ How It Works
 
-1. **Clone the Repository**
+### 1. **Configuration**
+Define all zone settings in a YAML file. Common configurations are placed under a `default` section, while customizations are made on a per-zone basis.
 
-   ```bash
-   git clone https://github.com/yourusername/cloudflare-automation.git
-   cd cloudflare-automation
-   ```
+### 2. **Execution**
+The script reads the configuration, applies settings using Cloudflare’s API, and commits any configuration updates back to your repository.
 
-2. **Create a Virtual Environment**
+### 3. **Automation**
+This setup works seamlessly with GitHub Actions (or any CI/CD tool) to automate the configuration process on a schedule or trigger.
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate   # On Windows use `venv\Scripts\activate`
-   ```
+## 📄 YAML Configuration Example
 
-3. **Install Required Dependencies**
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-   Ensure the `requirements.txt` contains the necessary packages:
-   ```text
-   aiohttp
-   pydantic
-   cloudflare
-   tenacity
-   pyyaml
-   ```
-
-## Configuration
-
-### YAML Configuration File
-
-The script relies on a YAML configuration file to define the Cloudflare settings for each zone. Below is an example configuration (`cloudflare.yaml`):
+The configuration is written in YAML format for simplicity. Below is an example that defines default settings and customizations for specific domains.
 
 ```yaml
 cloudflare:
-  api_token: "your_cloudflare_api_token"
+  default:
+    # Default settings that apply to all zones unless overridden
+    ssl: "full"
+    min_tls_version: "1.2"
+    http3: true
+    rocket_loader: "off"
+    brotli: "on"
+    ipv6: "on"
+    always_online: "on"
+    automatic_https_rewrites: "on"
+    opportunistic_encryption: "on"
+    cache_level: "aggressive"
+    browser_cache_ttl: 14400
+    edge_cache_ttl: 31536000
+    challenge_ttl: 3600
+
   zones:
-    - id: "zone_id_1"
+    - id: "1234567890abcdef1234567890abcdef"
       domain: "example.com"
+      # This zone inherits all settings from default except those explicitly defined here
       settings:
-        enable_http3: true
-        enable_hsts: true
-        hsts_max_age: 31536000
-        tls_min_version: "1.2"
-        secure_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256"
-        enable_ddos_protection: true
-        enable_waf: true
-        enable_dnssec: true
-        enable_https_rewrites: true
-        geo_blocking_enabled: false
-        geo_blocking_countries: []
-        custom_header_enabled: false
-        custom_header_key: ""
-        custom_header_value: ""
-        cache_level: "Standard"
-        browser_cache_ttl: 14400
-        polish_mode: "lossless"
-        rate_limit:
-          threshold: 1000
-          period: 60
-          action: "simulate"
-          timeout: 60
-          content_type: "text/plain"
-          body: "This request has been rate-limited."
-        firewall_rules: []
+        ssl: "strict"
+        min_tls_version: "1.3"  # Override the default for this zone
+
+    - id: "0987654321fedcba0987654321fedcba"
+      domain: "anotherdomain.com"
+      # This zone can inherit settings from default without overriding anything
+      settings: {}
 ```
 
-#### Explanation of Settings
+### Key Sections:
+- **`default`**: Common settings that apply to all domains unless overridden.
+- **`zones`**: List of individual zones (domains), each of which can inherit from or override the default settings.
+- **Zone IDs and FQDNs are hardcoded**: The Zone IDs (`id`) and domains (`domain`) are explicitly specified in the YAML file.
 
-- **`api_token`**: Your Cloudflare API token with sufficient permissions to manage settings.
-- **`zones`**: A list of zones with their `id`, `domain`, and desired `settings`.
-  - **`id`**: Cloudflare Zone ID (found in the Cloudflare dashboard).
-  - **`domain`**: The domain name for the Cloudflare zone.
-  - **`settings`**: Cloudflare settings to be applied (see [Suggested Default Settings](#suggested-default-settings) below).
+## 🏗️ Setup Instructions
 
-## Usage
+### 1. Prerequisites
+- **Cloudflare Account**: Ensure you have an active Cloudflare account and API token with appropriate permissions.
+- **GitHub Repository**: Prepare a GitHub repository containing your YAML configuration file and script.
+- **GitHub Actions Setup**: This solution is designed to work seamlessly with GitHub Actions, but can also be adapted for any CI/CD tool.
 
-1. **Run the Script**
+### 2. Installation
+```bash
+git clone https://github.com/fabriziosalmi/flared.git
+cd flared
+```
 
-   Use the command line to execute the script, providing the path to your YAML configuration file:
+### 3. Configuration
+- **Cloudflare API Token**: Create your API token via the [Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens) and add it to GitHub Secrets as `CLOUDFLARE_API_TOKEN`.
+- **YAML Configuration**: Edit `config/cloudflare.yaml` to define your zone settings, hardcoding the Zone IDs and domain names.
 
-   ```bash
-   python scripts/cloudflare.py --config conf/cloudflare.yaml
-   ```
+### 4. Running the Script
+```bash
+python scripts/apply_cloudflare.py --config config/cloudflare.yaml
+```
 
-2. **Observe Output**
-
-   The script will output progress logs, including the application of each setting, any errors encountered, and confirmation of saved configurations.
-
-## Suggested Default Settings
-
-These defaults balance security, performance, and usability. Adjust as necessary:
-
-- **HTTP/3**: `true` - Enables faster and more efficient network connections.
-- **HSTS**: `true` - Forces HTTPS connections to improve security.
-- **HSTS Max Age**: `31536000` - Enforces HTTPS for one year.
-- **TLS Minimum Version**: `"1.2"` - Ensures secure connections.
-- **Secure Ciphers**: `"ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256"` - Strong encryption.
-- **DDoS Protection**: `true` - Protects against DDoS attacks.
-- **WAF**: `true` - Web Application Firewall to prevent common attacks.
-- **DNSSEC**: `true` - Secures DNS queries.
-- **HTTPS Rewrites**: `true` - Ensures all content is served over HTTPS.
-- **Geo-Blocking**: `false` - Disable unless specific requirements exist.
-- **Custom Headers**: `false` - Disable unless needed for security or compliance.
-- **Cache Level**: `"Standard"` - Balance between performance and freshness.
-- **Browser Cache TTL**: `14400` - 4 hours.
-- **Polish Mode**: `"lossless"` - Optimizes images without quality loss.
-- **Rate Limit**: `{ "threshold": 1000, "period": 60, "action": "simulate", "timeout": 60 }` - Basic rate limiting in simulation mode.
-
-## Running in GitHub Actions
-
-To automate the script execution in GitHub Actions, create a workflow file in your repository at `.github/workflows/cloudflare.yml`:
-
+### 5. Automating with GitHub Actions
+Create the following workflow file to automate updates:
 ```yaml
-name: Cloudflare Automation
+name: Cloudflare Settings Automation
 
 on:
-  workflow_dispatch:  # Allows manual triggering from the GitHub Actions UI
+  workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'  # Runs daily at midnight
 
 jobs:
   apply-settings:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -170,30 +125,56 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python -m venv venv
+          source venv/bin/activate
           python -m pip install --upgrade pip
-          pip install aiohttp pydantic cloudflare tenacity pyyaml
+          pip install requests pydantic tenacity pyyaml
 
       - name: Run Cloudflare script
-        run: python scripts/cloudflare.py --config conf/cloudflare.yaml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          source venv/bin/activate
+          python scripts/apply_cloudflare.py --config config/cloudflare.yaml
+
+      - name: Handle errors
+        if: failure()
+        run: echo "::error::Workflow failed at some steps."
 ```
 
-## Troubleshooting
+## 📊 Example Output
 
-- **Invalid API Token**: Ensure your API token has the necessary permissions for the zones you are managing.
-- **Configuration Errors**: Verify that the YAML file is correctly formatted and all required fields are filled.
-- **Git Errors**: Make sure your Git configuration allows committing and pushing changes from the environment where the script is running.
+Here’s an example log output showing a successful update:
+```
+::INFO :: Cloudflare API token is valid.
+::INFO :: Processing zone example.com...
+::INFO :: Successfully updated SSL to full for example.com.
+::INFO :: Successfully updated HTTP/3 for example.com.
+...
+::INFO :: Configuration saved to output/example_com_config.json
+```
 
-## Contributing
+## 🛡️ Security Considerations
 
-Contributions are welcome! Please fork the repository and submit a pull request with your improvements.
+### Token and Secret Management
+- **API Token**: Never store your Cloudflare API token in the repository. Use environment variables or GitHub Secrets to protect sensitive information.
+- **Hardcoded Zone IDs**: Ensure the Zone IDs and domains in the YAML configuration remain up to date.
 
-## License
+### Error Handling
+The script handles errors gracefully, skipping invalid or unsupported configurations, ensuring your workflow isn’t disrupted.
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+## 🔧 Customization and Extensibility
 
+This project is highly customizable. Add support for new Cloudflare features, integrate with other CI/CD systems, or modify the YAML structure to suit your specific use case.
 
-### Additional Notes
+## 👨‍💻 Contributing
 
-- **YAML Configuration File**: The structure of the YAML file allows for easy customization of settings per domain. Ensure the correct Cloudflare zone IDs and domains are specified.
-- **Running in CI/CD Pipelines**: By integrating the script into GitHub Actions, you can automate the execution and track changes in the repository.
-- **Extensible and Customizable**: The script can be extended to handle more settings or use cases by modifying the Python script or YAML configuration file.
+Contributions are welcome! If you have new feature suggestions or find bugs, feel free to open an issue or submit a pull request.
+
+## 📄 License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+
+---
+
+🎉 **Happy Automating!** This project simplifies the process of managing your Cloudflare zones, offering a streamlined and powerful way to control settings across multiple domains.

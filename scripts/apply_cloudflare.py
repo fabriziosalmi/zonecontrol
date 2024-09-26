@@ -19,43 +19,42 @@ if GITHUB_ACTIONS:
 else:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-
 # Cloudflare settings validation using Pydantic
 class CloudflareSettings(BaseModel):
-    enable_http3: Optional[bool] = False
-    enable_hsts: Optional[bool] = False
-    hsts_max_age: Optional[int] = 0
-    tls_min_version: str = "1.2"
-    secure_ciphers: Optional[str] = ""
-    enable_ddos_protection: Optional[bool] = False
-    enable_waf: Optional[bool] = False
-    enable_dnssec: Optional[bool] = False
-    enable_https_rewrites: Optional[bool] = False
-    geo_blocking_enabled: Optional[bool] = False
-    geo_blocking_countries: List[str] = []
-    custom_header_enabled: Optional[bool] = False
-    custom_header_key: Optional[str] = ""
-    custom_header_value: Optional[str] = ""
+    ssl: Optional[str] = "full"
+    min_tls_version: Optional[str] = "1.2"
+    ciphers: Optional[List[str]] = []
+    http3: Optional[bool] = False
+
+    rocket_loader: Optional[str] = "off"
+    brotli: Optional[str] = "on"
+    ipv6: Optional[str] = "on"
+    always_online: Optional[str] = "on"
+    automatic_https_rewrites: Optional[str] = "on"
+    opportunistic_encryption: Optional[str] = "on"
+    
     cache_level: Optional[str] = "aggressive"
     browser_cache_ttl: Optional[int] = 14400
-    polish_mode: Optional[str] = "off"
-    rate_limit: Optional[Dict[str, Union[int, str]]] = {}
-    firewall_rules: Optional[List[Dict[str, str]]] = []
+    edge_cache_ttl: Optional[int] = 31536000
 
-    @field_validator("tls_min_version")
-    def validate_tls_min_version(cls, value):
+    browser_integrity_check: Optional[str] = "on"
+    challenge_ttl: Optional[int] = 3600
+
+    # Validators to ensure settings are valid
+    @field_validator("min_tls_version")
+    def validate_tls_version(cls, value):
         if value not in {"1.0", "1.1", "1.2", "1.3"}:
-            raise ValueError("❌ Invalid TLS version. Must be one of '1.0', '1.1', '1.2', '1.3'.")
+            raise ValueError("Invalid TLS version. Choose one of '1.0', '1.1', '1.2', '1.3'.")
         return value
 
-    @field_validator("polish_mode")
-    def validate_polish_mode(cls, value):
-        if value not in {"off", "lossless", "lossy"}:
-            raise ValueError("❌ Invalid Polish mode. Must be 'off', 'lossless', or 'lossy'.")
+    @field_validator("ssl")
+    def validate_ssl_mode(cls, value):
+        if value not in {"off", "flexible", "full", "strict"}:
+            raise ValueError("Invalid SSL mode. Choose one of 'off', 'flexible', 'full', 'strict'.")
         return value
 
 
-# Root config class
+# Config class to hold all zones
 class Config(BaseModel):
     cloudflare: Dict[str, Any]
 
@@ -148,7 +147,7 @@ def commit_and_push_changes(file_path: str):
         logging.error(f"No changes to commit: {e}")
 
 
-# Main function
+# Main function to handle all domains
 def main(config_path: str):
     try:
         with open(config_path, 'r') as file:
@@ -173,23 +172,18 @@ def main(config_path: str):
         logging.error("API token validation failed. Exiting.")
         sys.exit(1)
 
-    zone_id = os.getenv('CLOUDFLARE_ZONE_ID')
-    if not zone_id:
-        logging.error("Cloudflare Zone ID not found in environment variables.")
-        sys.exit(1)
-
-    fqdn = os.getenv('CLOUDFLARE_FQDN')
-    if not fqdn:
-        logging.error("Cloudflare FQDN not found in environment variables.")
-        sys.exit(1)
-
+    # Loop through each domain/zone and apply the settings
     for zone in config.cloudflare.get('zones', []):
-        domain = fqdn
+        zone_id = zone.get('id')
+        fqdn = zone.get('domain')
+        if not zone_id or not fqdn:
+            logging.error(f"Zone ID or domain not found for one of the zones.")
+            continue
+
         settings = CloudflareSettings(**zone.get('settings', {}))
+        logging.info(f"Processing zone {zone_id} for domain {fqdn}...")
 
-        logging.info(f"Processing zone {zone_id} for domain {domain}...")
-
-        new_config = apply_settings_for_zone(api_token, zone_id, domain, settings)
+        new_config = apply_settings_for_zone(api_token, zone_id, fqdn, settings)
         json_file_path = save_config_to_json(zone_id, new_config)
         commit_and_push_changes(json_file_path)
 

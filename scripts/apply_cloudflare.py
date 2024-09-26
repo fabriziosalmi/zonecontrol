@@ -4,7 +4,7 @@ import json
 import asyncio
 import logging
 import yaml
-from typing import List, Dict, Union, Any
+from typing import List, Dict, Union, Any, Optional
 from aiohttp import ClientSession
 from pydantic import BaseModel, ValidationError, validator
 from CloudFlare import CloudFlare, CloudFlareAPIError
@@ -23,25 +23,25 @@ else:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class CloudflareSettings(BaseModel):
-    enable_http3: bool = False
-    enable_hsts: bool = False
-    hsts_max_age: int = 0
+    enable_http3: Optional[bool] = False
+    enable_hsts: Optional[bool] = False
+    hsts_max_age: Optional[int] = 0
     tls_min_version: str = "1.2"
-    secure_ciphers: str = ""
-    enable_ddos_protection: bool = False
-    enable_waf: bool = False
-    enable_dnssec: bool = False
-    enable_https_rewrites: bool = False
-    geo_blocking_enabled: bool = False
+    secure_ciphers: Optional[str] = ""
+    enable_ddos_protection: Optional[bool] = False
+    enable_waf: Optional[bool] = False
+    enable_dnssec: Optional[bool] = False
+    enable_https_rewrites: Optional[bool] = False
+    geo_blocking_enabled: Optional[bool] = False
     geo_blocking_countries: List[str] = []
-    custom_header_enabled: bool = False
-    custom_header_key: str = ""
-    custom_header_value: str = ""
-    cache_level: str = "aggressive"
-    browser_cache_ttl: int = 14400
-    polish_mode: str = "off"
-    rate_limit: Dict[str, Union[int, str]] = {}
-    firewall_rules: List[Dict[str, str]] = []
+    custom_header_enabled: Optional[bool] = False
+    custom_header_key: Optional[str] = ""
+    custom_header_value: Optional[str] = ""
+    cache_level: Optional[str] = "aggressive"
+    browser_cache_ttl: Optional[int] = 14400
+    polish_mode: Optional[str] = "off"
+    rate_limit: Optional[Dict[str, Union[int, str]]] = {}
+    firewall_rules: Optional[List[Dict[str, str]]] = []
 
     @validator("tls_min_version")
     def validate_tls_min_version(cls, value):
@@ -58,30 +58,28 @@ class CloudflareSettings(BaseModel):
 class Config(BaseModel):
     cloudflare: Dict[str, Any]
 
+# Retry with exponential backoff for API errors
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def apply_settings_for_zone(cf: CloudFlare, zone_id: str, domain: str, settings: CloudflareSettings) -> Dict[str, Any]:
     logging.info(f"Applying settings for domain {domain}...")
 
     updated_settings = {}
-
     async with ClientSession() as session:
-        for key, value in settings.dict().items():
-            if value is not None:  # Only update settings that are not None
-                endpoint = f'zones/{zone_id}/settings/{key}'
-                try:
-                    logging.info(f"Updating {key} to {value} for {domain}...")
-                    response = await cf.zones.settings.async_patch(zone_id, data={key: value})
-                    updated_settings[key] = response
-                    logging.info(f"Successfully updated {key} to {value} for {domain}.")
-                except CloudFlareAPIError as e:
-                    logging.error(f"Failed to update {key} for {domain}: {e}")
-                    updated_settings[key] = {'error': str(e)}
-                    continue
+        settings_dict = settings.dict(exclude_none=True)  # Exclude None values
+        try:
+            response = await cf.zones.settings.async_patch(zone_id, data=settings_dict)
+            updated_settings.update(response)
+            logging.info(f"Successfully updated settings for {domain}.")
+        except CloudFlareAPIError as e:
+            logging.error(f"Failed to update settings for {domain}: {e}")
+            raise e  # Retry using tenacity
 
     return updated_settings
 
 def save_config_to_json(zone_id: str, config: Dict[str, Any]) -> str:
     json_path = f"output/{zone_id}_config.json"
     try:
+        os.makedirs('output', exist_ok=True)  # Create output directory if it doesn't exist
         with open(json_path, 'w') as f:
             json.dump(config, f, indent=4)
         logging.info(f"Configuration saved to {json_path}")
@@ -92,11 +90,12 @@ def save_config_to_json(zone_id: str, config: Dict[str, Any]) -> str:
 def commit_and_push_changes(file_path: str):
     try:
         subprocess.run(['git', 'add', file_path], check=True)
+        subprocess.run(['git', 'diff', '--exit-code'], check=True)  # Ensure there are changes
         subprocess.run(['git', 'commit', '-m', 'Updated Cloudflare settings'], check=True)
         subprocess.run(['git', 'push'], check=True)
         logging.info("Changes committed and pushed successfully.")
     except subprocess.CalledProcessError as e:
-        logging.error(f"Failed to commit and push changes: {e}")
+        logging.error(f"No changes to commit: {e}")
 
 async def main(config_path: str):
     try:

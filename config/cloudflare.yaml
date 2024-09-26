@@ -1,8 +1,8 @@
 cloudflare:
   api_token: "{{ secrets.CLOUDFLARE_API_TOKEN }}"
   zones:
-    - id: "{{ secrets.CLOUDFLARE_ZONE1_ID }}"
-      domain: "{{ secrets.CLOUDFLARE_ZONE1_FQDN }}"
+    - id: "{{ secrets.CLOUDFLARE_ZONE_ID }}"
+      domain: "{{ secrets.CLOUDFLARE_FQDN }}"
       settings:
         enable_http3: true
         enable_hsts: true

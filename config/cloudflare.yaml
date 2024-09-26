@@ -1,8 +1,8 @@
 cloudflare:
   api_token: "{{ secrets.CLOUDFLARE_API_TOKEN }}"
   zones:
-    - id: "{{ secrets.CLOUDFLARE_ZONE1_ID }}"
-      domain: "{{ secrets.CLOUDFLARE_ZONE1_FQDN }}"
+    - id: "b441db6e139659910adc1155990213e2"
+      domain: "freesubnet.com"
       settings:
         # Free plan settings
         ssl: "full"  # Can be 'off', 'flexible', 'full', 'strict'
@@ -27,8 +27,8 @@ cloudflare:
         browser_cache_ttl: 14400
         edge_cache_ttl: 31536000
 
-    - id: "{{ secrets.CLOUDFLARE_ZONE2_ID }}"  # Second domain
-      domain: "{{ secrets.CLOUDFLARE_ZONE2_FQDN }}"
+    - id: "50f3f9a9c13476185106ff4623757ca5"  # Second domain
+      domain: "linuxwebservice.net"
       settings:
         ssl: "strict"  # For the second domain, stricter SSL mode
         min_tls_version: "1.3"  # Set to the highest TLS version

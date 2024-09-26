@@ -1,13 +1,11 @@
 import os
 import sys
 import json
-import asyncio
 import logging
 import yaml
+import requests
 from typing import List, Dict, Union, Any, Optional
-from aiohttp import ClientSession
 from pydantic import BaseModel, ValidationError, validator
-from CloudFlare import CloudFlare, CloudFlareAPIError
 from tenacity import retry, stop_after_attempt, wait_exponential
 import argparse
 import subprocess
@@ -60,19 +58,29 @@ class Config(BaseModel):
 
 # Retry with exponential backoff for API errors
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-async def apply_settings_for_zone(cf: CloudFlare, zone_id: str, domain: str, settings: CloudflareSettings) -> Dict[str, Any]:
+def apply_settings_for_zone(api_token: str, zone_id: str, domain: str, settings: CloudflareSettings) -> Dict[str, Any]:
     logging.info(f"Applying settings for domain {domain}...")
 
+    headers = {
+        'Authorization': f'Bearer {api_token}',
+        'Content-Type': 'application/json'
+    }
+    
+    base_url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/settings"
+    settings_dict = settings.dict(exclude_none=True)  # Exclude None values
     updated_settings = {}
-    async with ClientSession() as session:
-        settings_dict = settings.dict(exclude_none=True)  # Exclude None values
-        try:
-            response = await cf.zones.settings.async_patch(zone_id, data=settings_dict)
-            updated_settings.update(response)
-            logging.info(f"Successfully updated settings for {domain}.")
-        except CloudFlareAPIError as e:
-            logging.error(f"Failed to update settings for {domain}: {e}")
-            raise e  # Retry using tenacity
+
+    for key, value in settings_dict.items():
+        if value is not None:  # Only update settings that are not None
+            logging.info(f"Updating {key} to {value} for {domain}...")
+            try:
+                response = requests.patch(f"{base_url}/{key}", headers=headers, json={"value": value})
+                response.raise_for_status()  # Raise error for bad responses
+                updated_settings[key] = response.json()
+                logging.info(f"Successfully updated {key} to {value} for {domain}.")
+            except requests.RequestException as e:
+                logging.error(f"Failed to update {key} for {domain}: {e}")
+                updated_settings[key] = {'error': str(e)}
 
     return updated_settings
 
@@ -97,7 +105,7 @@ def commit_and_push_changes(file_path: str):
     except subprocess.CalledProcessError as e:
         logging.error(f"No changes to commit: {e}")
 
-async def main(config_path: str):
+def main(config_path: str):
     try:
         with open(config_path, 'r') as file:
             config_data = yaml.safe_load(file)
@@ -111,8 +119,8 @@ async def main(config_path: str):
         logging.error(f"Invalid configuration file: {e}")
         sys.exit(1)
 
-    cf_token = os.getenv('CLOUDFLARE_API_TOKEN')
-    if not cf_token:
+    api_token = os.getenv('CLOUDFLARE_API_TOKEN')
+    if not api_token:
         logging.error("Cloudflare API token not found in environment variables.")
         sys.exit(1)
 
@@ -126,15 +134,13 @@ async def main(config_path: str):
         logging.error("Cloudflare FQDN not found in environment variables.")
         sys.exit(1)
 
-    cf = CloudFlare(token=cf_token)
-
     for zone in config.cloudflare.get('zones', []):
         domain = fqdn
         settings = CloudflareSettings(**zone.get('settings', {}))
 
         logging.info(f"Processing zone {zone_id} for domain {domain}...")
 
-        new_config = await apply_settings_for_zone(cf, zone_id, domain, settings)
+        new_config = apply_settings_for_zone(api_token, zone_id, domain, settings)
         json_file_path = save_config_to_json(zone_id, new_config)
         commit_and_push_changes(json_file_path)
 
@@ -143,4 +149,4 @@ if __name__ == "__main__":
     parser.add_argument('--config', type=str, required=True, help="Path to the configuration YAML file.")
     args = parser.parse_args()
 
-    asyncio.run(main(args.config))
+    main(args.config)

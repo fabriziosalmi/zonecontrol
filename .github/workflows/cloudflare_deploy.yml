@@ -13,6 +13,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
+      - name: Cache pip dependencies
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
@@ -51,6 +59,7 @@ jobs:
           CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           CLOUDFLARE_FQDN: ${{ secrets.CLOUDFLARE_FQDN }}
         run: |
+          set -e  # Ensure the script exits on any error
           source venv/bin/activate
           python scripts/apply_cloudflare.py --config config/cloudflare.yaml
         shell: bash  # Ensure the script runs in a bash shell

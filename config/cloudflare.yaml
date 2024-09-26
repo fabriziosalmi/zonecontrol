@@ -4,38 +4,33 @@ cloudflare:
     - id: "{{ secrets.CLOUDFLARE_ZONE1_ID }}"
       domain: "{{ secrets.CLOUDFLARE_ZONE1_FQDN }}"
       settings:
-        # Free Plan Settings
+        # Free plan settings
         ssl: "full"  # Can be 'off', 'flexible', 'full', 'strict'
-        min_tls_version: "1.2"  # TLS version
-        http3: true  # Enable HTTP/3 (Available in Free Plan)
-        rocket_loader: "on"  # Enable Rocket Loader (Available in Free Plan)
-        brotli: "on"  # Enable Brotli compression (Free Plan)
-        ipv6: "on"  # Enable IPv6 (Free Plan)
-        always_online: "on"  # Always Online (Free Plan)
-        cache_level: "aggressive"  # Cache settings (Free Plan)
-        browser_cache_ttl: 14400  # Browser cache TTL (Free Plan)
-        security_level: "medium"  # Security level (Free Plan)
-        browser_integrity_check: "on"  # Enable Browser Integrity Check (Free Plan)
-        automatic_https_rewrites: "on"  # Automatic HTTPS rewrites (Free Plan)
-        
-        # Optional Non-Free Plan Settings
-        polish: "lossless"  # Image optimization (Available in Pro and above)
-        mirage: "on"  # Mirage for mobile optimization (Pro Plan)
-        waf: true  # Web Application Firewall (WAF) (Available in Business and above)
-        edge_cache_ttl: 31536000  # Edge Cache TTL (Optional for higher plans)
+        min_tls_version: "1.2"  # Minimum TLS version
+        ciphers: ["ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"]  # Cipher suites for TLS
+        http3: true  # Enable HTTP/3 (only if available)
 
-    - id: "{{ secrets.CLOUDFLARE_ZONE2_ID }}"
+        # Free performance settings
+        rocket_loader: "off"  # Rocket Loader (available for free)
+        brotli: "on"  # Brotli compression (free plan)
+        ipv6: "on"  # Enable IPv6 (available on all plans)
+        always_online: "on"  # Enable Always Online (free plan)
+        automatic_https_rewrites: "on"  # Automatic HTTPS rewrites (free plan)
+        opportunistic_encryption: "on"  # Opportunistic encryption (free)
+
+        # Free security settings
+        browser_integrity_check: "on"  # Browser Integrity Check (free)
+        challenge_ttl: 3600  # Challenge TTL in seconds
+
+        # Caching settings (available on free plan)
+        cache_level: "aggressive"
+        browser_cache_ttl: 14400
+        edge_cache_ttl: 31536000
+
+    - id: "{{ secrets.CLOUDFLARE_ZONE2_ID }}"  # Second domain
       domain: "{{ secrets.CLOUDFLARE_ZONE2_FQDN }}"
       settings:
-        ssl: "strict"
-        min_tls_version: "1.3"
-        http3: true
-        rocket_loader: "on"
-        brotli: "on"
-        ipv6: "on"
-        always_online: "on"
-        cache_level: "aggressive"
-        browser_cache_ttl: 3600
-        security_level: "high"
-        browser_integrity_check: "on"
-        automatic_https_rewrites: "on"
+        ssl: "strict"  # For the second domain, stricter SSL mode
+        min_tls_version: "1.3"  # Set to the highest TLS version
+        cache_level: "bypass"
+        rocket_loader: "on"  # Different settings for second domain

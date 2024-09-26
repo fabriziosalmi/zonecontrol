@@ -101,11 +101,25 @@ def apply_settings_for_zone(api_token: str, zone_id: str, domain: str, settings:
                 updated_settings[key] = response.json()
                 logging.info(f"Successfully updated {key} to {value} for {domain}.")
             except requests.HTTPError as http_err:
-                if response.status_code == 403:
-                    logging.error(f"Forbidden (403): Failed to update {key} for {domain}. Aborting operation.")
-                    sys.exit(1)  # Exit the script if forbidden errors occur
+                # Capture and log detailed error information
+                error_message = response.json().get('errors', [])
                 logging.error(f"Failed to update {key} for {domain}: {http_err}")
+                if error_message:
+                    logging.error(f"API Error Details for {key}: {json.dumps(error_message, indent=4)}")
+                else:
+                    logging.error(f"No detailed error message provided for {key}.")
+
+                if response.status_code == 403:
+                    logging.warning(f"403 Forbidden: {key} cannot be updated for {domain}. Skipping this setting.")
+                    continue  # Skip this setting if it's forbidden
+                if response.status_code == 400:
+                    logging.warning(f"400 Bad Request: Invalid data or configuration for {key}. Check Cloudflare docs for {key}.")
+                    continue  # Skip this setting if the data is invalid
                 updated_settings[key] = {'error': str(http_err)}
+            except Exception as e:
+                logging.error(f"Unexpected error while updating {key} for {domain}: {e}")
+                updated_settings[key] = {'error': str(e)}
+
     return updated_settings
 
 

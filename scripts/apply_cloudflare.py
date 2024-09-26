@@ -19,12 +19,12 @@ if GITHUB_ACTIONS:
 else:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
 # Cloudflare settings validation using Pydantic
 class CloudflareSettings(BaseModel):
     ssl: Optional[str] = "full"
     min_tls_version: Optional[str] = "1.2"
-    ciphers: Optional[List[str]] = []
-    http3: Optional[bool] = False
+    http3: Optional[bool] = True
 
     rocket_loader: Optional[str] = "off"
     brotli: Optional[str] = "on"
@@ -32,12 +32,10 @@ class CloudflareSettings(BaseModel):
     always_online: Optional[str] = "on"
     automatic_https_rewrites: Optional[str] = "on"
     opportunistic_encryption: Optional[str] = "on"
-    
+
     cache_level: Optional[str] = "aggressive"
     browser_cache_ttl: Optional[int] = 14400
     edge_cache_ttl: Optional[int] = 31536000
-
-    browser_integrity_check: Optional[str] = "on"
     challenge_ttl: Optional[int] = 3600
 
     # Validators to ensure settings are valid
@@ -57,6 +55,13 @@ class CloudflareSettings(BaseModel):
 # Config class to hold all zones
 class Config(BaseModel):
     cloudflare: Dict[str, Any]
+
+
+# Function to merge default settings with zone-specific settings
+def merge_default_settings(default_settings: Dict[str, Any], zone_settings: Dict[str, Any]) -> Dict[str, Any]:
+    merged_settings = default_settings.copy()  # Start with default settings
+    merged_settings.update(zone_settings)  # Override with zone-specific settings
+    return merged_settings
 
 
 # Function to validate the API token by calling the Cloudflare API
@@ -138,6 +143,8 @@ def save_config_to_json(zone_id: str, config: Dict[str, Any]) -> str:
 # Function to commit and push changes to the repository
 def commit_and_push_changes(file_path: str):
     try:
+        subprocess.run(['git', 'config', '--global', 'user.email', 'ci@example.com'], check=True)
+        subprocess.run(['git', 'config', '--global', 'user.name', 'CI User'], check=True)
         subprocess.run(['git', 'add', file_path], check=True)
         subprocess.run(['git', 'diff', '--exit-code'], check=True)  # Ensure there are changes
         subprocess.run(['git', 'commit', '-m', 'Updated Cloudflare settings'], check=True)
@@ -172,15 +179,23 @@ def main(config_path: str):
         logging.error("API token validation failed. Exiting.")
         sys.exit(1)
 
+    # Get default settings
+    default_settings = config.cloudflare.get('default', {})
+
     # Loop through each domain/zone and apply the settings
     for zone in config.cloudflare.get('zones', []):
         zone_id = zone.get('id')
         fqdn = zone.get('domain')
+        zone_settings = zone.get('settings', {})
+        
         if not zone_id or not fqdn:
             logging.error(f"Zone ID or domain not found for one of the zones.")
             continue
 
-        settings = CloudflareSettings(**zone.get('settings', {}))
+        # Merge default and zone-specific settings
+        merged_settings = merge_default_settings(default_settings, zone_settings)
+        settings = CloudflareSettings(**merged_settings)
+
         logging.info(f"Processing zone {zone_id} for domain {fqdn}...")
 
         new_config = apply_settings_for_zone(api_token, zone_id, fqdn, settings)

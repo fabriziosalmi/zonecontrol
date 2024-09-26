@@ -173,4 +173,4 @@ Contributions are welcome! If you have new feature suggestions or find bugs, fee
 
 ## 📄 License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+This project is licensed under the AGPL3 License. See the [LICENSE](LICENSE) file for more details.

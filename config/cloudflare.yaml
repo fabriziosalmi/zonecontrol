@@ -20,9 +20,9 @@ cloudflare:
         custom_header_value: "Configured by https://github.com/fabriziosalmi/flared"
         cache_level: "aggressive"
         browser_cache_ttl: 14400
-        polish_mode: "lossless"  # Ensure "off", "lossy", "lossless" modes are valid
+        polish_mode: "lossless"
         rate_limit:
-          requests_per_minute: 100  # Ensure this is correctly parsed and validated
+          requests_per_minute: 100
         firewall_rules:
           - action: "block"
             description: "Block traffic from specific country"

@@ -1,8 +1,5 @@
 # Flared
 
-> [!WARNING]
-> currently broken, under active development :)
-
 This repository contains a Python script to automate the configuration of Cloudflare settings for one or more zones. The script applies security and performance settings, updates configurations, and tracks changes by saving them to JSON files and pushing them back to the repository.
 
 ## Table of Contents

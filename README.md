@@ -174,7 +174,3 @@ Contributions are welcome! If you have new feature suggestions or find bugs, fee
 ## 📄 License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
-
----
-
-🎉 **Happy Automating!** This project simplifies the process of managing your Cloudflare zones, offering a streamlined and powerful way to control settings across multiple domains.

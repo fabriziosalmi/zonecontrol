@@ -31,7 +31,7 @@ jobs:
           python -m venv venv
           source venv/bin/activate
           python -m pip install --upgrade pip
-          pip install --force-reinstall aiohttp pydantic cloudflare tenacity pyyaml
+          pip install requests pydantic tenacity pyyaml
         shell: bash  # Ensure the script runs in a bash shell
 
       - name: Verify configuration file

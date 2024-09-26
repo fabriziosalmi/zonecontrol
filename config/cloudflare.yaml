@@ -1,29 +1,41 @@
 cloudflare:
   api_token: "{{ secrets.CLOUDFLARE_API_TOKEN }}"
   zones:
-    - id: "{{ secrets.CLOUDFLARE_ZONE_ID }}"
-      domain: "{{ secrets.CLOUDFLARE_FQDN }}"
+    - id: "{{ secrets.CLOUDFLARE_ZONE1_ID }}"
+      domain: "{{ secrets.CLOUDFLARE_ZONE1_FQDN }}"
       settings:
-        enable_http3: true
-        enable_hsts: true
-        hsts_max_age: 31536000
-        tls_min_version: "1.2"
-        secure_ciphers: "ECDHE-RSA-AES128-GCM-SHA256"
-        enable_ddos_protection: true
-        enable_waf: true
-        enable_dnssec: true
-        enable_https_rewrites: false
-        geo_blocking_enabled: false
-        geo_blocking_countries: []
-        custom_header_enabled: false
-        custom_header_key: "X-Custom-Header"
-        custom_header_value: "Configured by https://github.com/fabriziosalmi/flared"
+        # Free Plan Settings
+        ssl: "full"  # Can be 'off', 'flexible', 'full', 'strict'
+        min_tls_version: "1.2"  # TLS version
+        http3: true  # Enable HTTP/3 (Available in Free Plan)
+        rocket_loader: "on"  # Enable Rocket Loader (Available in Free Plan)
+        brotli: "on"  # Enable Brotli compression (Free Plan)
+        ipv6: "on"  # Enable IPv6 (Free Plan)
+        always_online: "on"  # Always Online (Free Plan)
+        cache_level: "aggressive"  # Cache settings (Free Plan)
+        browser_cache_ttl: 14400  # Browser cache TTL (Free Plan)
+        security_level: "medium"  # Security level (Free Plan)
+        browser_integrity_check: "on"  # Enable Browser Integrity Check (Free Plan)
+        automatic_https_rewrites: "on"  # Automatic HTTPS rewrites (Free Plan)
+        
+        # Optional Non-Free Plan Settings
+        polish: "lossless"  # Image optimization (Available in Pro and above)
+        mirage: "on"  # Mirage for mobile optimization (Pro Plan)
+        waf: true  # Web Application Firewall (WAF) (Available in Business and above)
+        edge_cache_ttl: 31536000  # Edge Cache TTL (Optional for higher plans)
+
+    - id: "{{ secrets.CLOUDFLARE_ZONE2_ID }}"
+      domain: "{{ secrets.CLOUDFLARE_ZONE2_FQDN }}"
+      settings:
+        ssl: "strict"
+        min_tls_version: "1.3"
+        http3: true
+        rocket_loader: "on"
+        brotli: "on"
+        ipv6: "on"
+        always_online: "on"
         cache_level: "aggressive"
-        browser_cache_ttl: 14400
-        polish_mode: "lossless"
-        rate_limit:
-          requests_per_minute: 100
-        firewall_rules:
-          - action: "block"
-            description: "Block traffic from specific country"
-            filter: "ip.geoip.country eq 'CN'"
+        browser_cache_ttl: 3600
+        security_level: "high"
+        browser_integrity_check: "on"
+        automatic_https_rewrites: "on"

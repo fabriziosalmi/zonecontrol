@@ -1,6 +1,6 @@
-# 🌐 Flared (Cloudflare Zones Settings Automation)
+# 🌐 Zonecontrol (Cloudflare Zones Settings Automation)
 
-Welcome to **Flared** (Cloudflare Zones Settings Automation), a powerful, scalable, and fully automated solution for managing and applying your Cloudflare zone configurations across multiple domains. This tool allows you to define default configurations and customize settings for individual domains, all while leveraging Cloudflare’s robust API for performance, security, and caching management.
+Welcome to **Zonecontrol** (Cloudflare Zones Settings Automation, previously named Flared), a powerful, scalable, and fully automated solution for managing and applying your Cloudflare zone configurations across multiple domains. This tool allows you to define default configurations and customize settings for individual domains, all while leveraging Cloudflare’s robust API for performance, security, and caching management.
 
 ## 🚀 Project Summary
 

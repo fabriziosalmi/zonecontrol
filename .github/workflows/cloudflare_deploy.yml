@@ -2,8 +2,8 @@ name: Cloudflare Settings Automation
 
 on:
   workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
-  schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight
+  # schedule:
+  #   - cron: '0 0 * * *'  # Runs daily at midnight
 
 jobs:
   apply-settings:
